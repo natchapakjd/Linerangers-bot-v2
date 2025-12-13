@@ -11,6 +11,7 @@ from enum import Enum
 from loguru import logger
 
 from app.services.adb_service import AdbService
+from app.services.template_service import TemplateService, DailyClaimTemplates
 from app.config import ADB_HOST, ADB_PORT, ADB_DEVICE_SERIAL
 
 
@@ -54,15 +55,20 @@ class DailyLoginService:
     
     def __init__(self):
         self.adb = AdbService(host=ADB_HOST, port=ADB_PORT, device_serial=ADB_DEVICE_SERIAL)
+        self.template_service = TemplateService(threshold=0.6)  # Lower threshold for better matching
         self._status = DailyLoginStatus()
         self._stop_event = threading.Event()
         self._loop_thread: Optional[threading.Thread] = None
         self._log_callbacks: List[Callable[[str], None]] = []
         
+        # Feature toggles
+        self.auto_claim_enabled = True  # Enable auto claim by default
+        
         # Configurable delays
         self.delay_after_push = 2.0  # seconds after pushing XML
-        self.delay_for_game_load = 30.0  # seconds to wait for game to load
+        self.delay_for_game_load = 60.0  # max seconds to wait for game to load
         self.delay_between_accounts = 5.0  # seconds between accounts
+        self.template_check_interval = 2.0  # seconds between template checks
     
     @property
     def status(self) -> DailyLoginStatus:
@@ -199,7 +205,7 @@ class DailyLoginService:
         logger.info("Daily login loop ended")
     
     def _process_account(self, account: AccountInfo) -> bool:
-        """Process a single account - close game, push XML, restart game, wait for load."""
+        """Process a single account - close game, push XML, restart game, claim rewards."""
         # Step 1: Force stop game FIRST (ensure clean state)
         self._emit_log(f"  ⏹️ Closing Line Rangers...")
         self.adb.force_stop_app(LINERANGERS_PACKAGE)
@@ -218,7 +224,7 @@ class DailyLoginService:
             return False
         
         # Step 4: Copy with root to app's shared_prefs
-        self._emit_log(f"  � Replacing account data...")
+        self._emit_log(f"  🔐 Replacing account data...")
         success = self.adb.copy_file_with_root(temp_path, LINERANGERS_PREF_PATH)
         if not success:
             account.error_message = "Failed to copy file with root"
@@ -230,19 +236,144 @@ class DailyLoginService:
         self._emit_log(f"  🎮 Starting Line Rangers...")
         self.adb.start_app(LINERANGERS_PACKAGE)
         
-        # Step 6: Wait for game to fully load
-        self._emit_log(f"  ⏳ Waiting {int(self.delay_for_game_load)}s for game to load...")
-        self._wait_for_game_load()
+        # Step 6: Smart wait - wait until we detect a known UI element
+        self._emit_log(f"  ⏳ Waiting for game to load...")
+        if not self._wait_for_game_ready():
+            self._emit_log(f"  ⚠️ Game load timeout, continuing anyway...")
         
-        # Step 7: Force stop again after daily login is done
+        # Step 7: Auto claim rewards if enabled
+        if self.auto_claim_enabled:
+            self._claim_daily_rewards()
+        else:
+            # Just wait a fixed time if auto claim is disabled
+            self._emit_log(f"  ⏳ Waiting {int(self.delay_for_game_load)}s...")
+            self._wait(self.delay_for_game_load)
+        
+        # Step 8: Force stop after daily login is done
         self._emit_log(f"  ✅ Daily login complete, closing game...")
         self._wait(2)
         self.adb.force_stop_app(LINERANGERS_PACKAGE)
         
         return True
     
+    def _wait_for_game_ready(self) -> bool:
+        """Wait until game is loaded by detecting known UI elements."""
+        start_time = time.time()
+        timeout = self.delay_for_game_load
+        
+        while not self._stop_event.is_set():
+            elapsed = time.time() - start_time
+            if elapsed >= timeout:
+                return False
+            
+            # Take screenshot
+            screen = self.adb.screenshot()
+            if screen is None:
+                self._wait(self.template_check_interval)
+                continue
+            
+            # Look for any known button (GIFTBOX, CLOSE, or OK)
+            result = self.template_service.find_any_template(
+                screen,
+                [DailyClaimTemplates.GIFTBOX, DailyClaimTemplates.CLOSE, DailyClaimTemplates.OK]
+            )
+            
+            if result:
+                template_name, x, y = result
+                self._emit_log(f"  ✅ Game loaded! Found: {template_name}")
+                return True
+            
+            remaining = int(timeout - elapsed)
+            if remaining % 5 == 0:  # Log every 5 seconds
+                self._emit_log(f"  ⏳ Waiting for game... ({remaining}s remaining)")
+            
+            self._wait(self.template_check_interval)
+        
+        return False
+    
+    def _claim_daily_rewards(self):
+        """Auto claim daily rewards using template matching."""
+        self._emit_log(f"  🎁 Starting auto claim...")
+        self._emit_log(f"  📍 Looking for buttons: X, GIFTBOX, ACCEPT ALL, OK")
+        logger.info(f"Auto claim starting. Templates: CLOSE={DailyClaimTemplates.CLOSE}")
+        
+        max_iterations = 20  # Safety limit
+        iteration = 0
+        no_button_count = 0  # Count consecutive "no button" iterations
+        
+        while not self._stop_event.is_set() and iteration < max_iterations:
+            iteration += 1
+            self._emit_log(f"  🔍 Scan #{iteration}...")
+            
+            # Take screenshot
+            screen = self.adb.screenshot()
+            if screen is None:
+                self._emit_log(f"  ⚠️ Screenshot failed")
+                self._wait(1)
+                continue
+            
+            screen_h, screen_w = screen.shape[:2]
+            self._emit_log(f"  📸 Screenshot: {screen_w}x{screen_h}")
+            
+            found_button = False
+            
+            # Priority 1: Close X buttons first (popups)
+            pos = self.template_service.find_template(screen, DailyClaimTemplates.CLOSE)
+            if pos:
+                self._emit_log(f"  ❌ Found X button at ({pos[0]}, {pos[1]}), tapping...")
+                self.adb.tap(pos[0], pos[1])
+                self._wait(1.5)
+                found_button = True
+                no_button_count = 0
+                continue
+            
+            # Priority 2: GIFTBOX to open rewards
+            pos = self.template_service.find_template(screen, DailyClaimTemplates.GIFTBOX)
+            if pos:
+                self._emit_log(f"  🎁 Found GIFTBOX at ({pos[0]}, {pos[1]}), tapping...")
+                self.adb.tap(pos[0], pos[1])
+                self._wait(2)
+                found_button = True
+                no_button_count = 0
+                continue
+            
+            # Priority 3: ACCEPT ALL to claim
+            pos = self.template_service.find_template(screen, DailyClaimTemplates.ACCEPT_ALL)
+            if pos:
+                self._emit_log(f"  ✨ Found ACCEPT ALL at ({pos[0]}, {pos[1]}), tapping...")
+                self.adb.tap(pos[0], pos[1])
+                self._wait(2)
+                found_button = True
+                no_button_count = 0
+                continue
+            
+            # Priority 4: OK to confirm
+            pos = self.template_service.find_template(screen, DailyClaimTemplates.OK)
+            if pos:
+                self._emit_log(f"  👍 Found OK at ({pos[0]}, {pos[1]}), tapping...")
+                self.adb.tap(pos[0], pos[1])
+                self._wait(1.5)
+                found_button = True
+                no_button_count = 0
+                continue
+            
+            # No buttons found this iteration
+            if not found_button:
+                no_button_count += 1
+                self._emit_log(f"  ⏳ No buttons found ({no_button_count}/3)")
+                
+                # Exit after 3 consecutive "no button" iterations
+                if no_button_count >= 3:
+                    self._emit_log(f"  ✅ No more buttons found, claim complete!")
+                    break
+                    
+                self._wait(2)
+        
+        if iteration >= max_iterations:
+            self._emit_log(f"  ⚠️ Reached max iterations, stopping claim loop")
+    
     def _wait_for_game_load(self):
-        """Wait for game to load with periodic screenshot updates."""
+        """Legacy: Wait for game to load with periodic screenshot updates."""
         remaining = self.delay_for_game_load
         interval = 5.0  # Update every 5 seconds
         

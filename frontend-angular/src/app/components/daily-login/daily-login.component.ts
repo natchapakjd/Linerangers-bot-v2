@@ -17,6 +17,7 @@ interface DailyLoginStatus {
   processed_count: number;
   current_account: string;
   message: string;
+  auto_claim_enabled: boolean;
   accounts: AccountInfo[];
 }
 
@@ -93,24 +94,36 @@ interface DailyLoginStatus {
       </div>
 
       <!-- Settings -->
-      <div class="card settings-section">
-        <h3>⚙️ Timing Settings</h3>
-        <div class="settings-grid">
-          <div class="setting-item">
-            <label>Delay after push (sec)</label>
-            <input type="number" [(ngModel)]="settings.delay_after_push" min="1" max="30" />
+          <div class="card settings-section">
+            <h3>⚙️ Settings</h3>
+            
+            <!-- Auto Claim Toggle -->
+            <div class="toggle-section">
+              <label class="toggle-label">
+                <span class="toggle-text">🎁 Auto Claim Rewards</span>
+                <div class="toggle-switch" [class.active]="settings.auto_claim_enabled" (click)="toggleAutoClaim()">
+                  <div class="toggle-slider"></div>
+                </div>
+              </label>
+              <p class="toggle-hint">Automatically close popups and claim daily rewards</p>
+            </div>
+            
+            <div class="settings-grid">
+              <div class="setting-item">
+                <label>Delay after push (sec)</label>
+                <input type="number" [(ngModel)]="settings.delay_after_push" min="1" max="30" />
+              </div>
+              <div class="setting-item">
+                <label>Game load timeout (sec)</label>
+                <input type="number" [(ngModel)]="settings.delay_for_game_load" min="10" max="120" />
+              </div>
+              <div class="setting-item">
+                <label>Between accounts (sec)</label>
+                <input type="number" [(ngModel)]="settings.delay_between_accounts" min="1" max="60" />
+              </div>
+            </div>
+            <button class="btn btn-secondary" (click)="saveSettings()">💾 Save Settings</button>
           </div>
-          <div class="setting-item">
-            <label>Game load wait (sec)</label>
-            <input type="number" [(ngModel)]="settings.delay_for_game_load" min="10" max="120" />
-          </div>
-          <div class="setting-item">
-            <label>Between accounts (sec)</label>
-            <input type="number" [(ngModel)]="settings.delay_between_accounts" min="1" max="60" />
-          </div>
-        </div>
-        <button class="btn btn-secondary" (click)="saveSettings()">💾 Save Settings</button>
-      </div>
 
       <!-- Control Buttons -->
       <div class="control-section">
@@ -571,6 +584,66 @@ interface DailyLoginStatus {
         flex-direction: column;
       }
     }
+
+    /* Toggle Switch */
+    .toggle-section {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid rgba(0, 245, 255, 0.1);
+    }
+
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+    }
+
+    .toggle-text {
+      font-size: 1rem;
+      color: #e2e8f0;
+    }
+
+    .toggle-hint {
+      font-size: 0.75rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+      margin-bottom: 0;
+    }
+
+    .toggle-switch {
+      width: 52px;
+      height: 28px;
+      background: rgba(100, 116, 139, 0.3);
+      border-radius: 14px;
+      position: relative;
+      transition: all 0.3s ease;
+      cursor: pointer;
+    }
+
+    .toggle-switch:hover {
+      background: rgba(100, 116, 139, 0.5);
+    }
+
+    .toggle-switch.active {
+      background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .toggle-slider {
+      width: 22px;
+      height: 22px;
+      background: white;
+      border-radius: 50%;
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      transition: all 0.3s ease;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .toggle-switch.active .toggle-slider {
+      left: 27px;
+    }
   `]
 })
 export class DailyLoginComponent implements OnInit, OnDestroy {
@@ -587,13 +660,15 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     processed_count: 0,
     current_account: '',
     message: '',
+    auto_claim_enabled: true,
     accounts: []
   });
   
   settings = {
     delay_after_push: 2,
-    delay_for_game_load: 30,
-    delay_between_accounts: 5
+    delay_for_game_load: 60,
+    delay_between_accounts: 5,
+    auto_claim_enabled: true
   };
   
   private statusInterval: any;
@@ -683,6 +758,25 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
       
       this.addLog(result.success ? '✅ Settings saved' : `❌ ${result.message}`);
     } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    }
+  }
+
+  async toggleAutoClaim(): Promise<void> {
+    const newValue = !this.settings.auto_claim_enabled;
+    this.settings.auto_claim_enabled = newValue;
+    
+    try {
+      const response = await fetch(`/api/v1/daily-login/auto-claim/${newValue}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      
+      this.addLog(newValue ? '🎁 Auto claim enabled' : '🚫 Auto claim disabled');
+    } catch (error) {
+      // Revert on error
+      this.settings.auto_claim_enabled = !newValue;
       this.addLog(`❌ Error: ${error}`);
     }
   }

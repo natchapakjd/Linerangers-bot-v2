@@ -99,8 +99,9 @@ class DailyLoginStatusResponse(BaseModel):
 
 class DailyLoginSettingsRequest(BaseModel):
     delay_after_push: float = 2.0
-    delay_for_game_load: float = 30.0
+    delay_for_game_load: float = 60.0
     delay_between_accounts: float = 5.0
+    auto_claim_enabled: bool = True
 
 
 @router.post("/daily-login/scan")
@@ -153,6 +154,7 @@ async def get_daily_login_status():
         "processed_count": status.processed_count,
         "current_account": status.current_account,
         "message": status.message,
+        "auto_claim_enabled": service.auto_claim_enabled,
         "accounts": [
             {
                 "filename": a.filename,
@@ -173,9 +175,21 @@ async def update_daily_login_settings(settings: DailyLoginSettingsRequest):
     service.delay_after_push = settings.delay_after_push
     service.delay_for_game_load = settings.delay_for_game_load
     service.delay_between_accounts = settings.delay_between_accounts
+    service.auto_claim_enabled = settings.auto_claim_enabled
     return CommandResponse(
         success=True,
         message="Settings updated"
+    )
+
+
+@router.post("/daily-login/auto-claim/{enabled}", response_model=CommandResponse)
+async def toggle_auto_claim(enabled: bool):
+    """Toggle auto claim rewards feature."""
+    service = get_daily_login_service()
+    service.auto_claim_enabled = enabled
+    return CommandResponse(
+        success=True,
+        message=f"Auto claim {'enabled' if enabled else 'disabled'}"
     )
 
 
@@ -187,5 +201,3 @@ async def get_daily_login_screenshot():
     if image_data:
         return {"success": True, "image": image_data}
     return {"success": False, "image": None, "message": "Failed to capture screenshot"}
-
-
