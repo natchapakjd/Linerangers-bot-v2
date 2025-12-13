@@ -365,3 +365,115 @@ async def get_device_daily_login_status(serial: str):
             for a in status.accounts
         ]
     }
+
+
+@router.get("/devices/{serial}/screenshot")
+async def get_device_screenshot(serial: str):
+    """Capture and return screenshot from a specific device."""
+    import subprocess
+    import base64
+    
+    manager = get_device_manager()
+    device = manager.get_device(serial)
+    
+    if not device:
+        return {"success": False, "message": f"Device {serial} not found", "image": None}
+    
+    if device.status.value != "online":
+        return {"success": False, "message": f"Device {serial} is {device.status.value}", "image": None}
+    
+    try:
+        # Capture screenshot using ADB
+        result = subprocess.run(
+            ["adb", "-s", serial, "exec-out", "screencap", "-p"],
+            capture_output=True,
+            timeout=10
+        )
+        
+        if result.returncode != 0 or not result.stdout:
+            return {"success": False, "message": "Failed to capture screenshot", "image": None}
+        
+        # Encode as base64
+        image_base64 = base64.b64encode(result.stdout).decode('utf-8')
+        
+        return {
+            "success": True,
+            "image": f"data:image/png;base64,{image_base64}",
+            "serial": serial
+        }
+        
+    except subprocess.TimeoutExpired:
+        return {"success": False, "message": "Screenshot capture timed out", "image": None}
+    except Exception as e:
+        return {"success": False, "message": str(e), "image": None}
+
+
+@router.get("/devices/screenshots/all")
+async def get_all_device_screenshots():
+    """Get screenshots from all online devices."""
+    import subprocess
+    import base64
+    
+    manager = get_device_manager()
+    manager.refresh_devices()
+    
+    results = []
+    
+    for device in manager.devices:
+        if device.status.value != "online":
+            results.append({
+                "serial": device.serial,
+                "status": device.status.value,
+                "task": device.assigned_task.value,
+                "is_running": device.is_running,
+                "success": False,
+                "image": None,
+                "message": f"Device is {device.status.value}"
+            })
+            continue
+        
+        try:
+            result = subprocess.run(
+                ["adb", "-s", device.serial, "exec-out", "screencap", "-p"],
+                capture_output=True,
+                timeout=10
+            )
+            
+            if result.returncode == 0 and result.stdout:
+                image_base64 = base64.b64encode(result.stdout).decode('utf-8')
+                results.append({
+                    "serial": device.serial,
+                    "status": device.status.value,
+                    "task": device.assigned_task.value,
+                    "is_running": device.is_running,
+                    "screen_size": device.screen_size,
+                    "success": True,
+                    "image": f"data:image/png;base64,{image_base64}"
+                })
+            else:
+                results.append({
+                    "serial": device.serial,
+                    "status": device.status.value,
+                    "task": device.assigned_task.value,
+                    "is_running": device.is_running,
+                    "success": False,
+                    "image": None,
+                    "message": "Failed to capture"
+                })
+        except Exception as e:
+            results.append({
+                "serial": device.serial,
+                "status": device.status.value,
+                "task": device.assigned_task.value,
+                "is_running": device.is_running,
+                "success": False,
+                "image": None,
+                "message": str(e)
+            })
+    
+    return {
+        "success": True,
+        "total": len(results),
+        "devices": results
+    }
+

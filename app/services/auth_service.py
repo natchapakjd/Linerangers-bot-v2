@@ -157,11 +157,11 @@ class AuthService:
                 # Create default admin
                 logger.warning("No admin found, creating default admin user...")
                 await self.create_user(
-                    username="admin",
-                    password="admin123",
+                    username="natchapakj",
+                    password="1160101802134.Ab*%",
                     role=UserRole.ADMIN
                 )
-                logger.warning("⚠️ Default admin created: admin / admin123")
+                logger.warning("⚠️ Default admin created: natchapakj / 1160101802134.Ab*%")
                 logger.warning("⚠️ Please change the password immediately!")
 
 

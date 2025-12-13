@@ -2,6 +2,15 @@ import { Component, OnInit, OnDestroy, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
+interface DeviceInfo {
+  serial: string;
+  status: string;
+  assigned_task: string;
+  screen_size: string;
+  is_running: boolean;
+  selected?: boolean;
+}
+
 interface AccountInfo {
   filename: string;
   filepath: string;
@@ -29,9 +38,53 @@ interface DailyLoginStatus {
     <div class="daily-login-page">
       <h2 class="page-title">📅 Daily Login Automation</h2>
       
+      <!-- Device Selection Section -->
+      <div class="card device-selection-section">
+        <div class="device-header">
+          <h3>📱 Select Devices</h3>
+          <button class="btn btn-secondary btn-small" (click)="refreshDevices()">
+            {{ isLoadingDevices() ? '⏳' : '🔄' }} Refresh
+          </button>
+        </div>
+        
+        @if (devices().length === 0) {
+          <div class="no-devices">
+            <span>No devices found. Connect an emulator and refresh.</span>
+          </div>
+        } @else {
+          <div class="device-grid">
+            @for (device of devices(); track device.serial) {
+              <label 
+                class="device-checkbox" 
+                [class.selected]="device.selected"
+                [class.offline]="device.status !== 'online'"
+                [class.running]="device.is_running"
+              >
+                <input 
+                  type="checkbox" 
+                  [checked]="device.selected" 
+                  (change)="toggleDevice(device)"
+                  [disabled]="device.status !== 'online'"
+                />
+                <div class="device-info">
+                  <span class="device-serial">{{ device.serial }}</span>
+                  <span class="device-status">
+                    {{ device.status === 'online' ? '🟢' : '🔴' }}
+                    @if (device.is_running) {
+                      <span class="running-badge">▶️ Running</span>
+                    }
+                  </span>
+                </div>
+              </label>
+            }
+          </div>
+          <div class="selected-count">
+            {{ getSelectedCount() }} device(s) selected
+          </div>
+        }
+      </div>
+      
       <div class="main-layout">
-        <!-- Left Column: Controls -->
-        <div class="left-column">
           <!-- Folder Selection -->
           <div class="card folder-section">
             <h3>📂 Account Folder</h3>
@@ -129,10 +182,10 @@ interface DailyLoginStatus {
       <div class="control-section">
         <button 
           class="btn btn-success btn-large" 
-          (click)="start()"
-          [disabled]="status().state === 'running' || status().accounts.length === 0"
+          (click)="startOnSelectedDevices()"
+          [disabled]="status().state === 'running' || status().accounts.length === 0 || getSelectedCount() === 0"
         >
-          🚀 START
+          🚀 START ON {{ getSelectedCount() }} DEVICE(S)
         </button>
         <button 
           class="btn btn-danger btn-large" 
@@ -160,39 +213,6 @@ interface DailyLoginStatus {
           <div *ngFor="let log of logs()" class="log-line">{{ log }}</div>
         </div>
       </div>
-        </div>
-        
-        <!-- Right Column: Emulator Screen -->
-        <div class="right-column">
-          <div class="card screen-preview-section">
-            <div class="screen-header">
-              <h3>📱 Emulator Screen</h3>
-              <button 
-                class="btn btn-small" 
-                (click)="refreshScreen()"
-                [disabled]="isRefreshingScreen()"
-              >
-                {{ isRefreshingScreen() ? '⏳' : '🔄' }}
-              </button>
-            </div>
-            <div class="screen-container">
-              <img 
-                *ngIf="screenImage()" 
-                [src]="screenImage()" 
-                alt="Emulator Screen"
-                class="screen-image"
-              />
-              <div *ngIf="!screenImage()" class="no-screen">
-                <span class="no-screen-icon">📵</span>
-                <span>No connection</span>
-                <button class="btn btn-secondary btn-small" (click)="refreshScreen()">
-                  Connect
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   `,
   styles: [`
@@ -204,9 +224,107 @@ interface DailyLoginStatus {
     }
 
     .main-layout {
-      display: grid;
-      grid-template-columns: 1fr 350px;
+      display: flex;
+      flex-direction: column;
       gap: 1rem;
+    }
+
+    /* Device Selection */
+    .device-selection-section {
+      margin-bottom: 0.5rem;
+    }
+
+    .device-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .device-header h3 {
+      margin: 0;
+    }
+
+    .no-devices {
+      text-align: center;
+      color: #64748b;
+      padding: 1rem;
+    }
+
+    .device-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 0.75rem;
+    }
+
+    .device-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border: 2px solid rgba(100, 100, 255, 0.2);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .device-checkbox:hover:not(.offline) {
+      border-color: rgba(0, 245, 255, 0.4);
+    }
+
+    .device-checkbox.selected {
+      border-color: #00f5ff;
+      background: rgba(0, 245, 255, 0.1);
+    }
+
+    .device-checkbox.offline {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .device-checkbox.running {
+      border-color: #22c55e;
+    }
+
+    .device-checkbox input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      accent-color: #00f5ff;
+    }
+
+    .device-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    .device-serial {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #e2e8f0;
+    }
+
+    .device-status {
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+
+    .running-badge {
+      background: rgba(34, 197, 94, 0.2);
+      color: #22c55e;
+      padding: 0.15rem 0.5rem;
+      border-radius: 8px;
+      font-size: 0.65rem;
+      font-weight: 600;
+      margin-left: 0.25rem;
+    }
+
+    .selected-count {
+      text-align: right;
+      color: #00f5ff;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
     }
 
     .left-column {
@@ -650,8 +768,10 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   folderPath = '';
   isScanning = signal(false);
   isRefreshingScreen = signal(false);
+  isLoadingDevices = signal(false);
   screenImage = signal<string>('');
   logs = signal<string[]>(['🚀 Daily Login ready']);
+  devices = signal<DeviceInfo[]>([]);
   
   status = signal<DailyLoginStatus>({
     state: 'idle',
@@ -674,9 +794,85 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   private statusInterval: any;
 
   ngOnInit(): void {
+    this.refreshDevices();
     this.refreshStatus();
     // Poll status every 2 seconds
     this.statusInterval = setInterval(() => this.refreshStatus(), 2000);
+  }
+
+  // ===== Device Management =====
+  
+  async refreshDevices(): Promise<void> {
+    this.isLoadingDevices.set(true);
+    try {
+      const response = await fetch('/api/v1/devices');
+      const data = await response.json();
+      if (data.success) {
+        // Keep selected state when refreshing
+        const currentDevices = this.devices();
+        const updatedDevices = data.devices.map((d: any) => ({
+          ...d,
+          selected: currentDevices.find(cd => cd.serial === d.serial)?.selected || false
+        }));
+        this.devices.set(updatedDevices);
+      }
+    } catch (error) {
+      this.addLog(`❌ Error loading devices: ${error}`);
+    } finally {
+      this.isLoadingDevices.set(false);
+    }
+  }
+
+  toggleDevice(device: DeviceInfo): void {
+    const devices = this.devices();
+    const updated = devices.map(d => 
+      d.serial === device.serial ? { ...d, selected: !d.selected } : d
+    );
+    this.devices.set(updated);
+  }
+
+  getSelectedCount(): number {
+    return this.devices().filter(d => d.selected).length;
+  }
+
+  getSelectedDevices(): DeviceInfo[] {
+    return this.devices().filter(d => d.selected && d.status === 'online');
+  }
+
+  async startOnSelectedDevices(): Promise<void> {
+    const selected = this.getSelectedDevices();
+    if (selected.length === 0) {
+      this.addLog('❌ No devices selected');
+      return;
+    }
+    
+    this.addLog(`🚀 Starting Daily Login on ${selected.length} device(s)...`);
+    
+    for (const device of selected) {
+      try {
+        // First scan folder for this device
+        await fetch(`/api/v1/devices/${device.serial}/daily-login/scan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_path: this.folderPath })
+        });
+        
+        // Then start
+        const response = await fetch(`/api/v1/devices/${device.serial}/daily-login/start`, {
+          method: 'POST'
+        });
+        const result = await response.json();
+        
+        this.addLog(result.success 
+          ? `✅ Started on ${device.serial}` 
+          : `❌ ${device.serial}: ${result.message}`
+        );
+      } catch (error) {
+        this.addLog(`❌ Error on ${device.serial}: ${error}`);
+      }
+    }
+    
+    this.refreshDevices();
   }
 
   ngOnDestroy(): void {

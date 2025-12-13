@@ -10,6 +10,7 @@ from loguru import logger
 import sys
 
 from app.api.v1 import endpoints_router, websocket_router, license_router, admin_license_router, auth_router
+from app.api.v1.remote import router as remote_router
 from app.config import API_HOST, API_PORT
 from app.core.database import init_db
 from app.services.auth_service import get_auth_service
@@ -28,7 +29,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:4200", "http://127.0.0.1:4200"],
+    allow_origins=["*"],  # Allow all origins for ngrok access
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -40,6 +41,7 @@ app.include_router(websocket_router)
 app.include_router(license_router)
 app.include_router(admin_license_router)
 app.include_router(auth_router)
+app.include_router(remote_router)
 
 # Serve static files (frontend)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
