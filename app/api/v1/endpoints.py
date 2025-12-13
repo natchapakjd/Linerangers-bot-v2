@@ -105,6 +105,49 @@ class DailyLoginSettingsRequest(BaseModel):
     auto_claim_enabled: bool = True
 
 
+@router.get("/browse-folder")
+async def browse_folder():
+    """Open a native folder picker dialog and return the selected path."""
+    import threading
+    from typing import Optional
+    
+    selected_path: Optional[str] = None
+    dialog_closed = threading.Event()
+    
+    def open_dialog():
+        nonlocal selected_path
+        try:
+            import tkinter as tk
+            from tkinter import filedialog
+            
+            root = tk.Tk()
+            root.withdraw()  # Hide the main window
+            root.attributes('-topmost', True)  # Bring dialog to front
+            root.lift()
+            root.focus_force()
+            
+            selected_path = filedialog.askdirectory(
+                title="Select Folder containing XML Account Files",
+                mustexist=True
+            )
+            
+            root.destroy()
+        except Exception as e:
+            print(f"Error opening folder dialog: {e}")
+        finally:
+            dialog_closed.set()
+    
+    # Run dialog in a separate thread to not block the event loop
+    thread = threading.Thread(target=open_dialog)
+    thread.start()
+    dialog_closed.wait(timeout=60)  # Wait up to 60 seconds
+    thread.join(timeout=1)
+    
+    if selected_path:
+        return {"success": True, "folder_path": selected_path}
+    return {"success": False, "folder_path": "", "message": "No folder selected"}
+
+
 @router.post("/daily-login/scan")
 async def scan_folder(request: ScanFolderRequest):
     """Scan a folder for XML account files."""

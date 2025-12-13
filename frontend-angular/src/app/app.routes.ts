@@ -6,6 +6,7 @@ import { LicenseComponent } from './components/license/license.component';
 import { AdminLicenseComponent } from './components/admin-license/admin-license.component';
 import { LoginComponent } from './components/login/login.component';
 import { SettingsComponent } from './components/settings/settings.component';
+import { WorkflowBuilderComponent } from './components/workflow-builder/workflow-builder.component';
 import { adminGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
@@ -15,6 +16,8 @@ export const routes: Routes = [
   { path: 'daily-login', component: DailyLoginComponent },
   { path: 'license', component: LicenseComponent },
   { path: 'settings', component: SettingsComponent },
+  { path: 'workflow-builder', component: WorkflowBuilderComponent },
   { path: 'admin/license', component: AdminLicenseComponent, canActivate: [adminGuard] },
   { path: '**', redirectTo: '' }
 ];
+

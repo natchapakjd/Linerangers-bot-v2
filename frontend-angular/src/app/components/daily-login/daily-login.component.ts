@@ -85,25 +85,32 @@ interface DailyLoginStatus {
       </div>
       
       <div class="main-layout">
-          <!-- Folder Selection -->
+        <!-- Folder Selection -->
           <div class="card folder-section">
             <h3>📂 Account Folder</h3>
             <div class="folder-input-group">
               <input 
                 type="text" 
                 [(ngModel)]="folderPath"
-                placeholder="Enter path to folder containing XML files..."
+                placeholder="Enter path or click Browse to select folder..."
                 class="folder-input"
               />
+              <button 
+                class="btn btn-secondary" 
+                (click)="browseFolder()"
+                [disabled]="isBrowsing()"
+              >
+                {{ isBrowsing() ? '⏳' : '📁' }} Browse
+              </button>
               <button 
                 class="btn btn-primary" 
                 (click)="scanFolder()"
                 [disabled]="isScanning()"
               >
-                {{ isScanning() ? '⏳ Scanning...' : '🔍 Scan Folder' }}
+                {{ isScanning() ? '⏳ Scanning...' : '🔍 Scan' }}
               </button>
             </div>
-            <p class="hint-text">e.g., C:\\Users\\YourName\\LineRangers\\accounts</p>
+            <p class="hint-text">📁 Click "Browse" to select folder or paste path directly (e.g., C:\\Users\\YourName\\LineRangers\\accounts)</p>
           </div>
 
 
@@ -767,6 +774,7 @@ interface DailyLoginStatus {
 export class DailyLoginComponent implements OnInit, OnDestroy {
   folderPath = '';
   isScanning = signal(false);
+  isBrowsing = signal(false);
   isRefreshingScreen = signal(false);
   isLoadingDevices = signal(false);
   screenImage = signal<string>('');
@@ -908,6 +916,29 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
       this.addLog(`❌ Error: ${error}`);
     } finally {
       this.isScanning.set(false);
+    }
+  }
+
+  async browseFolder(): Promise<void> {
+    this.isBrowsing.set(true);
+    this.addLog('📂 Opening folder picker...');
+    
+    try {
+      const response = await fetch('/api/v1/browse-folder');
+      const result = await response.json();
+      
+      if (result.success && result.folder_path) {
+        this.folderPath = result.folder_path;
+        this.addLog(`✅ Selected: ${result.folder_path}`);
+        // Auto-scan after selecting folder
+        await this.scanFolder();
+      } else {
+        this.addLog('ℹ️ No folder selected');
+      }
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    } finally {
+      this.isBrowsing.set(false);
     }
   }
 
