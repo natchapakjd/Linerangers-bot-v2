@@ -226,6 +226,7 @@ export class HeaderComponent {
   
   menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '🏠', route: '/' },
+    { id: 'devices', label: 'Devices', icon: '📱', badge: 'NEW', route: '/devices' },
     { id: 'daily-login', label: 'Daily Login', icon: '📅', badge: 'AUTO', route: '/daily-login' },
     { id: 're-id', label: 'Re-ID', icon: '🔄', route: '/re-id' },
     { id: 'gacha', label: 'Gacha Pull', icon: '🎰', badge: 'NEW', route: '/gacha' },
