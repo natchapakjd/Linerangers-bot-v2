@@ -226,6 +226,7 @@ export class HeaderComponent {
   
   menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: '🏠', route: '/' },
+    { id: 'license', label: 'License', icon: '🔑', route: '/license' },
     { id: 'devices', label: 'Devices', icon: '📱', badge: 'NEW', route: '/devices' },
     { id: 'daily-login', label: 'Daily Login', icon: '📅', badge: 'AUTO', route: '/daily-login' },
     { id: 're-id', label: 'Re-ID', icon: '🔄', route: '/re-id' },
@@ -233,6 +234,7 @@ export class HeaderComponent {
     { id: 'pvp', label: 'PVP Battle', icon: '⚔️', route: '/pvp' },
     { id: 'guild', label: 'Guild Raid', icon: '🏰', route: '/guild' },
     { id: 'farm', label: 'Auto Farm', icon: '🌾', route: '/farm' },
+    { id: 'admin-license', label: 'Admin', icon: '🔐', route: '/admin/license' },
     { id: 'settings', label: 'Settings', icon: '⚙️', route: '/settings' }
   ];
   

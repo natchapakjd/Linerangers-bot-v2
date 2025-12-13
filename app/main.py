@@ -9,8 +9,9 @@ from pathlib import Path
 from loguru import logger
 import sys
 
-from app.api.v1 import endpoints_router, websocket_router
+from app.api.v1 import endpoints_router, websocket_router, license_router, admin_license_router
 from app.config import API_HOST, API_PORT
+from app.core.database import init_db
 
 # Configure Loguru
 logger.remove()
@@ -35,6 +36,8 @@ app.add_middleware(
 # Include routers
 app.include_router(endpoints_router)
 app.include_router(websocket_router)
+app.include_router(license_router)
+app.include_router(admin_license_router)
 
 # Serve static files (frontend)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
@@ -53,6 +56,10 @@ async def root():
 
 @app.on_event("startup")
 async def startup():
+    # Initialize database
+    await init_db()
+    logger.info("📦 Database initialized")
+    
     logger.info("🚀 Line Rangers Bot Server Starting...")
     logger.info(f"📡 API: http://{API_HOST}:{API_PORT}")
     logger.info(f"📖 Docs: http://{API_HOST}:{API_PORT}/docs")

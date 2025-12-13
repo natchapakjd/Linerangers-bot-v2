@@ -6,3 +6,5 @@ loguru
 websockets
 pydantic
 python-multipart
+sqlalchemy[asyncio]
+aiosqlite
