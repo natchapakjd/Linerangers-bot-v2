@@ -1,0 +1,71 @@
+/* ========================================
+   Line Rangers Bot - Gaming Theme SCSS
+   ======================================== */
+
+// Variables
+$bg-primary: #0a0a0f;
+$bg-secondary: #12121a;
+$bg-card: #1a1a2e;
+$bg-card-hover: #1e1e35;
+
+$accent-primary: #00f5ff;
+$accent-secondary: #7c3aed;
+$accent-success: #10b981;
+$accent-warning: #f59e0b;
+$accent-danger: #ef4444;
+
+$text-primary: #ffffff;
+$text-secondary: #94a3b8;
+$text-muted: #64748b;
+
+$border-color: rgba(0, 245, 255, 0.2);
+$font-display: 'Orbitron', monospace;
+$font-body: 'Rajdhani', sans-serif;
+
+// Reset
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: $font-body;
+  background: $bg-primary;
+  color: $text-primary;
+  min-height: 100vh;
+  background-image: 
+    radial-gradient(ellipse at top, rgba(124, 58, 237, 0.1) 0%, transparent 50%),
+    radial-gradient(ellipse at bottom, rgba(0, 245, 255, 0.05) 0%, transparent 50%);
+}
+
+// Mixins
+@mixin glow-box($color) {
+  box-shadow: 0 0 20px rgba($color, 0.4);
+}
+
+@mixin gradient-text() {
+  background: linear-gradient(135deg, $accent-primary, $accent-secondary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+// Utility Classes
+.hidden {
+  display: none !important;
+}
+
+// Custom Scrollbar
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: $bg-secondary;
+}
+
+::-webkit-scrollbar-thumb {
+  background: $accent-secondary;
+  border-radius: 4px;
+}
