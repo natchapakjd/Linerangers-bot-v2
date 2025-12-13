@@ -66,3 +66,126 @@ async def resume_bot():
         success=success,
         message="Bot resumed" if success else "Cannot resume"
     )
+
+
+# ==================== Daily Login Endpoints ====================
+
+from app.services import get_daily_login_service
+from pydantic import BaseModel
+from typing import List
+
+
+class ScanFolderRequest(BaseModel):
+    folder_path: str
+
+
+class AccountInfoResponse(BaseModel):
+    filename: str
+    filepath: str
+    processed: bool
+    success: bool
+    error_message: str
+
+
+class DailyLoginStatusResponse(BaseModel):
+    state: str
+    folder_path: str
+    total_accounts: int
+    processed_count: int
+    current_account: str
+    accounts: List[AccountInfoResponse]
+    message: str
+
+
+class DailyLoginSettingsRequest(BaseModel):
+    delay_after_push: float = 2.0
+    delay_for_game_load: float = 30.0
+    delay_between_accounts: float = 5.0
+
+
+@router.post("/daily-login/scan")
+async def scan_folder(request: ScanFolderRequest):
+    """Scan a folder for XML account files."""
+    service = get_daily_login_service()
+    accounts = service.scan_folder(request.folder_path)
+    return {
+        "success": len(accounts) > 0,
+        "message": service.status.message,
+        "total_accounts": len(accounts),
+        "accounts": [
+            {"filename": a.filename, "filepath": a.filepath}
+            for a in accounts
+        ]
+    }
+
+
+@router.post("/daily-login/start", response_model=CommandResponse)
+async def start_daily_login():
+    """Start the daily login automation."""
+    service = get_daily_login_service()
+    success = service.start()
+    return CommandResponse(
+        success=success,
+        message="Daily login started" if success else service.status.message
+    )
+
+
+@router.post("/daily-login/stop", response_model=CommandResponse)
+async def stop_daily_login():
+    """Stop the daily login automation."""
+    service = get_daily_login_service()
+    success = service.stop()
+    return CommandResponse(
+        success=success,
+        message="Daily login stopped"
+    )
+
+
+@router.get("/daily-login/status")
+async def get_daily_login_status():
+    """Get current daily login status."""
+    service = get_daily_login_service()
+    status = service.status
+    return {
+        "state": status.state.value,
+        "folder_path": status.folder_path,
+        "total_accounts": status.total_accounts,
+        "processed_count": status.processed_count,
+        "current_account": status.current_account,
+        "message": status.message,
+        "accounts": [
+            {
+                "filename": a.filename,
+                "filepath": a.filepath,
+                "processed": a.processed,
+                "success": a.success,
+                "error_message": a.error_message
+            }
+            for a in status.accounts
+        ]
+    }
+
+
+@router.post("/daily-login/settings", response_model=CommandResponse)
+async def update_daily_login_settings(settings: DailyLoginSettingsRequest):
+    """Update daily login timing settings."""
+    service = get_daily_login_service()
+    service.delay_after_push = settings.delay_after_push
+    service.delay_for_game_load = settings.delay_for_game_load
+    service.delay_between_accounts = settings.delay_between_accounts
+    return CommandResponse(
+        success=True,
+        message="Settings updated"
+    )
+
+
+@router.get("/daily-login/screenshot")
+async def get_daily_login_screenshot():
+    """Get current emulator screenshot."""
+    service = get_daily_login_service()
+    image_data = service.get_screenshot()
+    if image_data:
+        return {"success": True, "image": image_data}
+    return {"success": False, "image": None, "message": "Failed to capture screenshot"}
+
+
