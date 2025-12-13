@@ -2,11 +2,13 @@
 License API endpoints for user and admin operations.
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from loguru import logger
 
 from app.services.license_service import get_license_service, LicenseService
+from app.services.auth_service import require_admin
+from app.models.user import User
 from app.core.database import init_db
 
 router = APIRouter(prefix="/api/v1/license", tags=["License"])
@@ -93,7 +95,10 @@ async def get_hardware_id():
 # ===== Admin Endpoints =====
 
 @admin_router.post("/create", response_model=LicenseResponse)
-async def create_license(request: CreateLicenseRequest):
+async def create_license(
+    request: CreateLicenseRequest,
+    admin: User = Depends(require_admin)
+):
     """
     Create a new license (Admin only).
     """
@@ -114,7 +119,7 @@ async def create_license(request: CreateLicenseRequest):
 
 
 @admin_router.get("/list")
-async def list_licenses():
+async def list_licenses(admin: User = Depends(require_admin)):
     """
     List all licenses (Admin only).
     """
@@ -129,7 +134,10 @@ async def list_licenses():
 
 
 @admin_router.delete("/{license_key}")
-async def revoke_license(license_key: str):
+async def revoke_license(
+    license_key: str,
+    admin: User = Depends(require_admin)
+):
     """
     Revoke a license (Admin only).
     """
@@ -143,7 +151,10 @@ async def revoke_license(license_key: str):
 
 
 @admin_router.post("/{license_key}/reset-hardware")
-async def reset_hardware_binding(license_key: str):
+async def reset_hardware_binding(
+    license_key: str,
+    admin: User = Depends(require_admin)
+):
     """
     Reset hardware binding for a license (Admin only).
     Allows the license to be activated on a new device.

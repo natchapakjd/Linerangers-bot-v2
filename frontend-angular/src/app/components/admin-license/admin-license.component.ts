@@ -1,6 +1,7 @@
-import { Component, signal, OnInit } from '@angular/core';
+import { Component, signal, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { AuthService } from '../../services/auth.service';
 
 interface LicenseInfo {
   id: number;
@@ -517,6 +518,8 @@ interface LicenseInfo {
   `]
 })
 export class AdminLicenseComponent implements OnInit {
+  private authService = inject(AuthService);
+  
   licenses = signal<LicenseInfo[]>([]);
   isCreating = signal(false);
   createdLicense = signal<LicenseInfo | null>(null);
@@ -541,7 +544,9 @@ export class AdminLicenseComponent implements OnInit {
 
   async loadLicenses(): Promise<void> {
     try {
-      const response = await fetch('/api/v1/admin/license/list');
+      const response = await fetch('/api/v1/admin/license/list', {
+        headers: this.authService.getAuthHeaders()
+      });
       const data = await response.json();
       this.licenses.set(data.licenses || []);
     } catch (error) {
@@ -557,7 +562,10 @@ export class AdminLicenseComponent implements OnInit {
     try {
       const response = await fetch('/api/v1/admin/license/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...this.authService.getAuthHeaders()
+        },
         body: JSON.stringify(this.newLicense)
       });
       const data = await response.json();
@@ -579,7 +587,10 @@ export class AdminLicenseComponent implements OnInit {
     if (!confirm('Are you sure you want to revoke this license?')) return;
 
     try {
-      await fetch(`/api/v1/admin/license/${licenseKey}`, { method: 'DELETE' });
+      await fetch(`/api/v1/admin/license/${licenseKey}`, { 
+        method: 'DELETE',
+        headers: this.authService.getAuthHeaders()
+      });
       this.loadLicenses();
     } catch (error) {
       console.error('Failed to revoke license:', error);
@@ -590,7 +601,10 @@ export class AdminLicenseComponent implements OnInit {
     if (!confirm('Reset hardware binding? The customer will need to re-activate on their new device.')) return;
 
     try {
-      await fetch(`/api/v1/admin/license/${licenseKey}/reset-hardware`, { method: 'POST' });
+      await fetch(`/api/v1/admin/license/${licenseKey}/reset-hardware`, { 
+        method: 'POST',
+        headers: this.authService.getAuthHeaders()
+      });
       this.loadLicenses();
     } catch (error) {
       console.error('Failed to reset hardware:', error);

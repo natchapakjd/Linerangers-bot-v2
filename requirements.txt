@@ -8,3 +8,5 @@ pydantic
 python-multipart
 sqlalchemy[asyncio]
 aiosqlite
+python-jose[cryptography]
+passlib[bcrypt]

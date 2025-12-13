@@ -1,7 +1,8 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router, RouterModule } from '@angular/router';
 import { BotService } from '../../services/bot.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-header',
@@ -14,15 +15,25 @@ import { BotService } from '../../services/bot.service';
           <span class="logo-icon">🎮</span>
           <h1>LINE RANGERS BOT</h1>
         </div>
-        <div class="connection-status" [class.connected]="botService.isConnected()">
-          <span class="status-dot"></span>
-          <span class="status-text">{{ botService.isConnected() ? 'Connected' : 'Disconnected' }}</span>
+        <div class="auth-section">
+          @if (authService.isLoggedIn()) {
+            <span class="user-info">
+              <span class="user-icon">👤</span>
+              <span class="username">{{ authService.currentUser()?.username }}</span>
+              @if (authService.isAdmin()) {
+                <span class="admin-badge">ADMIN</span>
+              }
+            </span>
+            <button class="auth-btn" (click)="logout()">🚪 Logout</button>
+          } @else {
+            <button class="auth-btn login-btn" (click)="goToLogin()">🔐 Login</button>
+          }
         </div>
       </div>
       
       <nav class="navbar">
         <ul class="nav-menu">
-          <li class="nav-item" *ngFor="let item of menuItems">
+          <li class="nav-item" *ngFor="let item of filteredMenuItems()">
             <a 
               class="nav-link" 
               [class.active]="activeMenu === item.id"
@@ -81,7 +92,13 @@ import { BotService } from '../../services/bot.service';
       letter-spacing: 2px;
     }
 
-    .connection-status {
+    .auth-section {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .user-info {
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -91,18 +108,49 @@ import { BotService } from '../../services/bot.service';
       font-size: 0.875rem;
     }
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      background: #ef4444;
-      box-shadow: 0 0 10px #ef4444;
-      transition: all 0.3s ease;
+    .user-icon {
+      font-size: 1.1rem;
     }
 
-    .connection-status.connected .status-dot {
-      background: #10b981;
-      box-shadow: 0 0 10px #10b981;
+    .username {
+      color: #00f5ff;
+      font-weight: 600;
+    }
+
+    .admin-badge {
+      background: linear-gradient(135deg, #7c3aed, #a855f7);
+      color: white;
+      font-size: 0.65rem;
+      padding: 0.15rem 0.5rem;
+      border-radius: 10px;
+      font-weight: 700;
+    }
+
+    .auth-btn {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .auth-btn:hover {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .auth-btn.login-btn {
+      background: linear-gradient(135deg, #7c3aed, #00f5ff);
+      border: none;
+    }
+
+    .auth-btn.login-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 5px 20px rgba(124, 58, 237, 0.4);
     }
 
     /* === NAVBAR === */
@@ -221,22 +269,33 @@ import { BotService } from '../../services/bot.service';
 export class HeaderComponent {
   private router = inject(Router);
   botService = inject(BotService);
+  authService = inject(AuthService);
   
   activeMenu = 'dashboard';
   
   menuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '🏠', route: '/' },
-    { id: 'license', label: 'License', icon: '🔑', route: '/license' },
-    { id: 'devices', label: 'Devices', icon: '📱', badge: 'NEW', route: '/devices' },
-    { id: 'daily-login', label: 'Daily Login', icon: '📅', badge: 'AUTO', route: '/daily-login' },
-    { id: 're-id', label: 'Re-ID', icon: '🔄', route: '/re-id' },
-    { id: 'gacha', label: 'Gacha Pull', icon: '🎰', badge: 'NEW', route: '/gacha' },
-    { id: 'pvp', label: 'PVP Battle', icon: '⚔️', route: '/pvp' },
-    { id: 'guild', label: 'Guild Raid', icon: '🏰', route: '/guild' },
-    { id: 'farm', label: 'Auto Farm', icon: '🌾', route: '/farm' },
-    { id: 'admin-license', label: 'Admin', icon: '🔐', route: '/admin/license' },
-    { id: 'settings', label: 'Settings', icon: '⚙️', route: '/settings' }
+    { id: 'dashboard', label: 'Dashboard', icon: '🏠', route: '/', adminOnly: false },
+    { id: 'license', label: 'License', icon: '🔑', route: '/license', adminOnly: false },
+    { id: 'devices', label: 'Devices', icon: '📱', badge: 'NEW', route: '/devices', adminOnly: false },
+    { id: 'daily-login', label: 'Daily Login', icon: '📅', badge: 'AUTO', route: '/daily-login', adminOnly: false },
+    { id: 're-id', label: 'Re-ID', icon: '🔄', route: '/re-id', adminOnly: false },
+    { id: 'gacha', label: 'Gacha Pull', icon: '🎰', badge: 'NEW', route: '/gacha', adminOnly: false },
+    { id: 'pvp', label: 'PVP Battle', icon: '⚔️', route: '/pvp', adminOnly: false },
+    { id: 'guild', label: 'Guild Raid', icon: '🏰', route: '/guild', adminOnly: false },
+    { id: 'farm', label: 'Auto Farm', icon: '🌾', route: '/farm', adminOnly: false },
+    { id: 'admin-license', label: 'Admin', icon: '🔐', route: '/admin/license', adminOnly: true },
+    { id: 'settings', label: 'Settings', icon: '⚙️', route: '/settings', adminOnly: false }
   ];
+  
+  // Filter menu items based on user role
+  filteredMenuItems = computed(() => {
+    return this.menuItems.filter(item => {
+      if (item.adminOnly && !this.authService.isAdmin()) {
+        return false;
+      }
+      return true;
+    });
+  });
   
   setActiveMenu(id: string) {
     this.activeMenu = id;
@@ -245,5 +304,13 @@ export class HeaderComponent {
       this.router.navigate([item.route]);
     }
   }
+  
+  goToLogin() {
+    this.router.navigate(['/login']);
+  }
+  
+  logout() {
+    this.authService.logout();
+    this.router.navigate(['/login']);
+  }
 }
-
