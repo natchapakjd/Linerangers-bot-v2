@@ -2,6 +2,7 @@ import { Component, OnInit, OnDestroy, signal, ElementRef, ViewChild } from '@an
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { CdkDragDrop, moveItemInArray, DragDropModule } from '@angular/cdk/drag-drop';
+import Swal from 'sweetalert2';
 
 interface WorkflowStep {
   id?: number;
@@ -875,11 +876,28 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   async deleteWorkflow(): Promise<void> {
     if (!this.currentWorkflow.id) return;
 
-    // Confirm deletion
+    // Confirm deletion with SweetAlert2
     const workflowName = this.currentWorkflow.name;
-    const confirmed = confirm(`Are you sure you want to delete "${workflowName}"?\n\nThis action cannot be undone.`);
     
-    if (!confirmed) return;
+    const result = await Swal.fire({
+      title: 'Delete Workflow?',
+      html: `Are you sure you want to delete <strong>"${workflowName}"</strong>?<br><br>This action cannot be undone.`,
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#fb7185',
+      cancelButtonColor: '#64748b',
+      confirmButtonText: '🗑️ Yes, Delete',
+      cancelButtonText: 'Cancel',
+      background: 'rgba(11, 16, 27, 0.95)',
+      color: '#f8fafc',
+      customClass: {
+        popup: 'swal-glass-popup',
+        confirmButton: 'swal-confirm-btn',
+        cancelButton: 'swal-cancel-btn'
+      }
+    });
+    
+    if (!result.isConfirmed) return;
 
     try {
       const response = await fetch(`/api/v1/workflows/${this.currentWorkflow.id}`, {
@@ -888,15 +906,40 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       const data = await response.json();
       
       if (data.success) {
+        // Success notification
+        Swal.fire({
+          title: 'Deleted!',
+          text: `Workflow "${workflowName}" has been deleted.`,
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false,
+          background: 'rgba(11, 16, 27, 0.95)',
+          color: '#f8fafc'
+        });
+        
         this.addLog(`🗑️ Deleted: ${workflowName}`);
         // Reset to new workflow
         this.selectedWorkflowId = '';
         await this.loadWorkflows();
         await this.loadWorkflow();
       } else {
+        Swal.fire({
+          title: 'Error!',
+          text: data.message || 'Failed to delete workflow',
+          icon: 'error',
+          background: 'rgba(11, 16, 27, 0.95)',
+          color: '#f8fafc'
+        });
         this.addLog(`❌ Delete failed: ${data.message || 'Unknown error'}`);
       }
     } catch (error) {
+      Swal.fire({
+        title: 'Error!',
+        text: `Delete error: ${error}`,
+        icon: 'error',
+        background: 'rgba(11, 16, 27, 0.95)',
+        color: '#f8fafc'
+      });
       this.addLog(`❌ Delete error: ${error}`);
     }
   }

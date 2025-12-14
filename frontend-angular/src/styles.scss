@@ -241,3 +241,45 @@ h1, h2, h3, h4, h5, h6 {
     background-color: var(--primary);
   }
 }
+
+/* --- SweetAlert2 Custom Styling --- */
+.swal-glass-popup {
+  backdrop-filter: blur(20px) !important;
+  -webkit-backdrop-filter: blur(20px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--radius-md) !important;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6) !important;
+}
+
+.swal2-popup {
+  font-family: var(--font-body) !important;
+}
+
+.swal2-title {
+  font-family: var(--font-display) !important;
+  color: var(--text-main) !important;
+  font-size: 1.5rem !important;
+}
+
+.swal2-html-container {
+  color: var(--text-muted) !important;
+}
+
+.swal-confirm-btn, .swal-cancel-btn {
+  padding: 0.7rem 1.5rem !important;
+  border-radius: var(--radius-sm) !important;
+  font-family: var(--font-body) !important;
+  font-weight: 600 !important;
+  border: none !important;
+  transition: all 0.2s !important;
+}
+
+.swal-confirm-btn:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 15px rgba(251, 113, 133, 0.3) !important;
+}
+
+.swal-cancel-btn:hover {
+  transform: translateY(-2px) !important;
+  background: #475569 !important;
+}
