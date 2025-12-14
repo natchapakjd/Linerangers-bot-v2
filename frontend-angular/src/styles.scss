@@ -283,3 +283,23 @@ h1, h2, h3, h4, h5, h6 {
   transform: translateY(-2px) !important;
   background: #475569 !important;
 }
+
+/* SweetAlert2 Input Field */
+.swal-input-field {
+  width: 100%;
+  padding: 0.7rem 1rem !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: var(--radius-sm) !important;
+  color: var(--text-main) !important;
+  font-family: var(--font-body) !important;
+  font-size: 1rem !important;
+  transition: all 0.2s !important;
+}
+
+.swal-input-field:focus {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.1) !important;
+  outline: none !important;
+}

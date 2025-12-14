@@ -104,14 +104,23 @@ interface DeviceInfo {
             <h3>VISUALIZATION</h3>
             <div class="canvas-controls">
                <div class="mode-toggles">
-                <button [class.active]="currentMode === 'click'" (click)="currentMode = 'click'" title="Click">📍</button>
-                <button [class.active]="currentMode === 'swipe'" (click)="currentMode = 'swipe'" title="Swipe">👆</button>
-                <button [class.active]="currentMode === 'swipe_2point'" (click)="currentMode = 'swipe_2point'; swipeFirstPoint = null" title="2-Point Swipe">✌️</button>
-                <button [class.active]="currentMode === 'capture'" (click)="currentMode = 'capture'" title="Capture Template">📷</button>
+                <button [class.active]="currentMode === 'click'" (click)="setMode('click')" title="Click Mode">📍</button>
+                <button [class.active]="currentMode === 'swipe'" (click)="setMode('swipe')" title="Swipe Mode">👆</button>
+                <button [class.active]="currentMode === 'swipe_2point'" (click)="setMode('swipe_2point')" title="2-Point Swipe Mode">✌️</button>
+                <button [class.active]="currentMode === 'capture'" (click)="setMode('capture')" title="Capture Template (Drag Rectangle)">📷</button>
               </div>
               <button class="icon-btn" (click)="refreshScreen()" title="Refresh Screen">🔄</button>
             </div>
           </div>
+
+          <!-- Mode Indicator -->
+          @if (currentMode !== 'click') {
+            <div class="mode-indicator">
+              @if (currentMode === 'swipe') { <span>👆 SWIPE MODE: Drag to swipe</span> }
+              @if (currentMode === 'swipe_2point') { <span>✌️ 2-POINT SWIPE: Click start, then end</span> }
+              @if (currentMode === 'capture') { <span>📷 CAPTURE MODE: Drag rectangle over target area</span> }
+            </div>
+          }
           
           <div class="screen-wrapper glass-panel">
             <div 
@@ -121,9 +130,10 @@ interface DeviceInfo {
               (mousemove)="onMouseMove($event)"
               (mouseup)="onMouseUp($event)"
               (mouseleave)="onMouseUp($event)"
+              [style.cursor]="currentMode === 'capture' ? 'crosshair' : 'default'"
             >
               @if (screenImage()) {
-                <img [src]="screenImage()" alt="Screen" class="screen-image" />
+                <img [src]="screenImage()" alt="Screen" class="screen-image" draggable="false" />
               } @else {
                 <div class="no-screen">
                   <span class="no-screen-icon">📡</span>
@@ -133,7 +143,7 @@ interface DeviceInfo {
               }
               
               <!-- Overlays -->
-              <canvas #overlayCanvas class="overlay-canvas" [width]="currentWorkflow.screen_width" [height]="currentWorkflow.screen_height"></canvas>
+              <canvas #overlayCanvas class="overlay-canvas"></canvas>
               
               <div class="scanlines"></div>
             </div>
@@ -278,22 +288,7 @@ interface DeviceInfo {
         </div>
       </div>
 
-       <!-- Capture Modal -->
-      @if (showCaptureModal) {
-        <div class="modal-backdrop">
-          <div class="modal-card glass-panel">
-            <h3>SAVE TEMPLATE</h3>
-            <div class="input-group">
-              <label>NAME</label>
-              <input type="text" class="glass-input" [(ngModel)]="captureTemplateName" placeholder="button_confirm" autofocus />
-            </div>
-            <div class="modal-actions">
-              <button class="glass-button" (click)="showCaptureModal = false">CANCEL</button>
-              <button class="glass-button primary" (click)="saveCapturedTemplate()">SAVE</button>
-            </div>
-          </div>
-        </div>
-      }
+       <!-- Capture Modal - REMOVED (Using SweetAlert2) -->
 
       <!-- Group Modal -->
       @if (showGroupModal) {
@@ -460,6 +455,26 @@ interface DeviceInfo {
       }
     }
 
+    /* Mode Indicator Banner */
+    .mode-indicator {
+      padding: 0.5rem 1rem;
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.1), rgba(192, 132, 252, 0.1));
+      border: 1px solid rgba(56, 189, 248, 0.2);
+      border-radius: var(--radius-sm);
+      margin-bottom: 0.75rem;
+      text-align: center;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--primary);
+      letter-spacing: 0.5px;
+      animation: fadeIn 0.3s ease-out, pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+
     /* --- Screen Canvas --- */
     .screen-wrapper {
       position: relative;
@@ -493,6 +508,9 @@ interface DeviceInfo {
       height: 100%;
       object-fit: contain; /* Ensure no distortion */
       image-rendering: high-quality;
+      user-select: none; /* Prevent selection */
+      -webkit-user-drag: none; /* Prevent drag on webkit browsers */
+      pointer-events: none; /* Allow mouse events to pass through to container */
     }
 
     /* Scanlines removed for clarity (LD Player style) */
@@ -1072,6 +1090,13 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     this.isDragging = false;
 
     const distance = Math.sqrt(Math.pow(clickX - this.dragStart.x, 2) + Math.pow(clickY - this.dragStart.y, 2));
+    
+    console.log('onMouseUp:', {
+      mode: this.currentMode,
+      distance,
+      dragStart: this.dragStart,
+      clickPos: { x: clickX, y: clickY }
+    });
 
     if (this.currentMode === 'click' && distance < 10) {
       // Click
@@ -1080,58 +1105,257 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       // Swipe
       this.addSwipeStep(this.dragStart.x, this.dragStart.y, clickX, clickY);
     } else if (this.currentMode === 'capture' && distance >= 10) {
-      // Capture region
+      // Capture region - show SweetAlert2 input
+      console.log('Entering capture save flow...');
       const minX = Math.min(this.dragStart.x, clickX);
       const minY = Math.min(this.dragStart.y, clickY);
       const width = Math.abs(clickX - this.dragStart.x);
       const height = Math.abs(clickY - this.dragStart.y);
       this.captureRegion = { x: minX, y: minY, width, height };
-      this.showCaptureModal = true;
+      
+      console.log('Capture region:', this.captureRegion);
+      this.addLog(`📷 Captured region: ${width}x${height} @ (${minX}, ${minY})`);
+      
+      // Clear overlay before showing dialog
+      this.clearOverlay();
+      
+      console.log('Calling promptSaveTemplate...');
+      // Show SweetAlert2 input (async, non-blocking)
+      this.promptSaveTemplate();
+      return; // Don't clear overlay again
     }
 
     this.clearOverlay();
   }
 
+  // Helper to set mode with feedback
+  setMode(mode: 'click' | 'swipe' | 'swipe_2point' | 'capture'): void {
+    this.currentMode = mode;
+    if (mode === 'swipe_2point') {
+      this.swipeFirstPoint = null;
+    }
+    this.addLog(`📡 Mode: ${mode.toUpperCase().replace('_', ' ')}`);
+  }
+
+  // Prompt to save template with SweetAlert2
+  async promptSaveTemplate(): Promise<void> {
+    console.log('promptSaveTemplate called!', this.captureRegion);
+    
+    const result = await Swal.fire({
+      title: '📷 Save Template',
+      html: `<p style="color: var(--text-muted); margin-bottom: 1rem;">Region: ${this.captureRegion.width}x${this.captureRegion.height} @ (${this.captureRegion.x}, ${this.captureRegion.y})</p>`,
+      input: 'text',
+      inputPlaceholder: 'button_confirm',
+      inputAttributes: {
+        autocapitalize: 'off',
+        autocomplete: 'off'
+      },
+      showCancelButton: true,
+      confirmButtonText: '💾 Save',
+      cancelButtonText: 'Cancel',
+      confirmButtonColor: '#38bdf8',
+      cancelButtonColor: '#64748b',
+      background: 'rgba(11, 16, 27, 0.95)',
+      color: '#f8fafc',
+      inputValidator: (value) => {
+        if (!value) {
+          return 'Template name is required!';
+        }
+        return null;
+      },
+      customClass: {
+        popup: 'swal-glass-popup',
+        input: 'swal-input-field'
+      }
+    });
+
+    if (result.isConfirmed && result.value) {
+      await this.saveCapturedTemplate(result.value);
+    } else {
+      this.addLog('❌ Template capture cancelled');
+    }
+  }
+
+  async saveCapturedTemplate(templateName: string): Promise<void> {
+    if (!templateName.trim()) {
+      this.addLog('❌ Please enter a template name');
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/v1/workflows/capture-template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_serial: this.selectedDevice,
+          name: templateName,
+          ...this.captureRegion
+        })
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        await this.loadTemplates();
+        Swal.fire({
+          title: 'Saved!',
+          text: `Template "${templateName}" has been saved.`,
+          icon: 'success',
+          timer: 2000,
+          showConfirmButton: false,
+          background: 'rgba(11, 16, 27, 0.95)',
+          color: '#f8fafc'
+        });
+        this.addLog(`📷 Template saved: ${templateName}`);
+        // Return to click mode
+        this.setMode('click');
+      } else {
+        Swal.fire({
+          title: 'Error!',
+          text: data.message || 'Failed to save template',
+          icon: 'error',
+          background: 'rgba(11, 16, 27, 0.95)',
+          color: '#f8fafc'
+        });
+        this.addLog(`❌ ${data.message}`);
+      }
+    } catch (error) {
+      Swal.fire({
+        title: 'Error!',
+        text: `Error: ${error}`,
+        icon: 'error',
+        background: 'rgba(11, 16, 27, 0.95)',
+        color: '#f8fafc'
+      });
+      this.addLog(`❌ Error: ${error}`);
+    }
+  }
+
   drawOverlay(): void {
     const canvas = this.overlayCanvas?.nativeElement;
-    if (!canvas) return;
+    const container = this.screenContainer?.nativeElement;
+    if (!canvas || !container) return;
 
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Get container dimensions
+    const containerRect = container.getBoundingClientRect();
+    
+    // Resize canvas to match container size (CSS pixels)
+    canvas.width = containerRect.width;
+    canvas.height = containerRect.height;
+
+    // Clear canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Calculate display scaling (to convert 960x540 coords to display coords)
+    const img = container.querySelector('.screen-image') as HTMLImageElement;
+    if (!img) return;
+
+    const imageAspect = this.currentWorkflow.screen_width / this.currentWorkflow.screen_height;
+    const containerAspect = containerRect.width / containerRect.height;
+
+    let displayWidth: number;
+    let displayHeight: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (containerAspect > imageAspect) {
+      // Container is wider - image is limited by height
+      displayHeight = containerRect.height;
+      displayWidth = displayHeight * imageAspect;
+      offsetX = (containerRect.width - displayWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Container is taller - image is limited by width
+      displayWidth = containerRect.width;
+      displayHeight = displayWidth / imageAspect;
+      offsetX = 0;
+      offsetY = (containerRect.height - displayHeight) / 2;
+    }
+
+    const scaleX = displayWidth / this.currentWorkflow.screen_width;
+    const scaleY = displayHeight / this.currentWorkflow.screen_height;
+
+    // Convert workflow coords to display coords
+    const toDisplayX = (x: number) => x * scaleX + offsetX;
+    const toDisplayY = (y: number) => y * scaleY + offsetY;
+
     if (this.currentMode === 'swipe') {
+      const startX = toDisplayX(this.dragStart.x);
+      const startY = toDisplayY(this.dragStart.y);
+      const endX = toDisplayX(this.dragEnd.x);
+      const endY = toDisplayY(this.dragEnd.y);
+
       ctx.beginPath();
-      ctx.moveTo(this.dragStart.x, this.dragStart.y);
-      ctx.lineTo(this.dragEnd.x, this.dragEnd.y);
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
       ctx.strokeStyle = '#00f5ff';
       ctx.lineWidth = 3;
       ctx.stroke();
 
       // Arrow head
-      const angle = Math.atan2(this.dragEnd.y - this.dragStart.y, this.dragEnd.x - this.dragStart.x);
+      const angle = Math.atan2(endY - startY, endX - startX);
       ctx.beginPath();
-      ctx.moveTo(this.dragEnd.x, this.dragEnd.y);
-      ctx.lineTo(this.dragEnd.x - 15 * Math.cos(angle - Math.PI / 6), this.dragEnd.y - 15 * Math.sin(angle - Math.PI / 6));
-      ctx.lineTo(this.dragEnd.x - 15 * Math.cos(angle + Math.PI / 6), this.dragEnd.y - 15 * Math.sin(angle + Math.PI / 6));
+      ctx.moveTo(endX, endY);
+      ctx.lineTo(endX - 15 * Math.cos(angle - Math.PI / 6), endY - 15 * Math.sin(angle - Math.PI / 6));
+      ctx.lineTo(endX - 15 * Math.cos(angle + Math.PI / 6), endY - 15 * Math.sin(angle + Math.PI / 6));
       ctx.closePath();
       ctx.fillStyle = '#00f5ff';
       ctx.fill();
     } else if (this.currentMode === 'capture') {
-      const minX = Math.min(this.dragStart.x, this.dragEnd.x);
-      const minY = Math.min(this.dragStart.y, this.dragEnd.y);
-      const width = Math.abs(this.dragEnd.x - this.dragStart.x);
-      const height = Math.abs(this.dragEnd.y - this.dragStart.y);
+      const minX = toDisplayX(Math.min(this.dragStart.x, this.dragEnd.x));
+      const minY = toDisplayY(Math.min(this.dragStart.y, this.dragEnd.y));
+      const maxX = toDisplayX(Math.max(this.dragStart.x, this.dragEnd.x));
+      const maxY = toDisplayY(Math.max(this.dragStart.y, this.dragEnd.y));
+      const width = maxX - minX;
+      const height = maxY - minY;
 
+      // Draw dashed rectangle
       ctx.strokeStyle = '#f59e0b';
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 5]);
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 5]);
       ctx.strokeRect(minX, minY, width, height);
       ctx.setLineDash([]);
 
-      ctx.fillStyle = 'rgba(245, 158, 11, 0.2)';
+      // Fill with semi-transparent color
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.15)';
       ctx.fillRect(minX, minY, width, height);
+
+      // Draw size label
+      const actualWidth = Math.abs(this.dragEnd.x - this.dragStart.x);
+      const actualHeight = Math.abs(this.dragEnd.y - this.dragStart.y);
+      if (actualWidth > 0 && actualHeight > 0) {
+        const label = `${actualWidth}×${actualHeight}`;
+        ctx.font = 'bold 14px "Rajdhani", sans-serif';
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#000';
+        ctx.lineWidth = 3;
+        ctx.strokeText(label, minX + 5, minY + 20);
+        ctx.fillText(label, minX + 5, minY + 20);
+      }
+    } else if (this.currentMode === 'swipe_2point' && this.swipeFirstPoint) {
+      // Draw first point marker
+      const firstX = toDisplayX(this.swipeFirstPoint.x);
+      const firstY = toDisplayY(this.swipeFirstPoint.y);
+      
+      ctx.beginPath();
+      ctx.arc(firstX, firstY, 8, 0, 2 * Math.PI);
+      ctx.fillStyle = '#00f5ff';
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw line to current mouse position
+      ctx.beginPath();
+      ctx.moveTo(firstX, firstY);
+      ctx.lineTo(toDisplayX(this.mouseX), toDisplayY(this.mouseY));
+      ctx.strokeStyle = '#00f5ff';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.stroke();
+      ctx.setLineDash([]);
     }
   }
 
@@ -1236,36 +1460,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     this.addLog(`🔀 Reordered steps`);
   }
 
-  async saveCapturedTemplate(): Promise<void> {
-    if (!this.captureTemplateName.trim()) {
-      this.addLog('❌ Please enter a template name');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/v1/workflows/capture-template', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          device_serial: this.selectedDevice,
-          name: this.captureTemplateName,
-          ...this.captureRegion
-        })
-      });
-
-      const data = await response.json();
-      if (data.success) {
-        await this.loadTemplates();
-        this.addLog(`📷 Template saved: ${this.captureTemplateName}`);
-        this.showCaptureModal = false;
-        this.captureTemplateName = '';
-      } else {
-        this.addLog(`❌ ${data.message}`);
-      }
-    } catch (error) {
-      this.addLog(`❌ Error: ${error}`);
-    }
-  }
+  // OLD saveCapturedTemplate function removed - now using SweetAlert2 version above
 
   getStepIcon(step: WorkflowStep): string {
     switch (step.step_type) {

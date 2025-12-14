@@ -1,7 +1,7 @@
 import {
   DOCUMENT,
   isPlatformBrowser
-} from "./chunk-E4ARXPCT.js";
+} from "./chunk-3Y5NDSE5.js";
 import {
   APP_ID,
   ApplicationRef,
@@ -80,7 +80,8 @@ import {
   ɵɵqueryRefresh,
   ɵɵstyleProp,
   ɵɵviewQuery
-} from "./chunk-IQ7YTYJ2.js";
+} from "./chunk-FROBIOV3.js";
+import "./chunk-WDMUDEB6.js";
 
 // node_modules/@angular/cdk/fesm2022/shadow-dom-B0oHn41l.mjs
 var shadowDomIsSupported;
