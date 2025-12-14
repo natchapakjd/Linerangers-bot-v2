@@ -34,6 +34,8 @@ interface Workflow {
   screen_width: number;
   screen_height: number;
   is_master: boolean;
+  mode_name?: string;  // NEW: simple mode assignment
+  month_year?: string;  // NEW: simple month assignment (YYYY-MM)
   steps: WorkflowStep[];
 }
 
@@ -90,6 +92,23 @@ interface DeviceInfo {
         <div class="input-group flex-2">
           <label>DESCRIPTION</label>
           <input type="text" class="glass-input" [(ngModel)]="currentWorkflow.description" placeholder="Optional description..." />
+        </div>
+        <div class="input-group">
+          <label>MODE</label>
+          <select [(ngModel)]="currentWorkflow.mode_name" class="glass-input">
+            <option value="">-- Select Mode --</option>
+            <option value="daily-login">Daily Login</option>
+            <option value="stage-farm">Stage Farm</option>
+            <option value="pvp">PVP Battle</option>
+            <option value="gacha">Gacha Pull</option>
+            <option value="event">Event</option>
+            <option value="gai-ruby">Gai-Ruby</option>
+            <option value="re-id">Re-ID</option>
+          </select>
+        </div>
+        <div class="input-group">
+          <label>MONTH/YEAR</label>
+          <input type="month" class="glass-input" [(ngModel)]="currentWorkflow.month_year" placeholder="YYYY-MM" />
         </div>
         <div class="input-group">
           <label>TARGET DEVICE</label>
@@ -848,6 +867,12 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   }
 
   async saveWorkflow(): Promise<void> {
+    // Auto-apply any pending step edits before saving
+    if (this.selectedStepIndex >= 0 && this.editingStep) {
+      this.currentWorkflow.steps[this.selectedStepIndex] = { ...this.editingStep };
+      this.addLog(`💾 Auto-applied pending changes to step ${this.selectedStepIndex + 1}`);
+    }
+    
     this.isSaving.set(true);
     
     try {

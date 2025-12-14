@@ -1,0 +1,124 @@
+<div class="mode-configuration">
+    <div class="header">
+        <h2>⚙️ Mode Configuration</h2>
+        <button class="btn-primary" (click)="showCreateForm = !showCreateForm">
+            {{ showCreateForm ? 'Cancel' : '+ New Configuration' }}
+        </button>
+    </div>
+
+    <div class="info-box">
+        <p>
+            <strong>💡 How it works:</strong> Configure which template set to use for each game mode in each month.
+            The system will automatically select the appropriate workflows based on the current date and active
+            configurations.
+        </p>
+    </div>
+
+    <!-- Create Form -->
+    <div class="create-form" *ngIf="showCreateForm">
+        <h3>Create New Configuration</h3>
+        <div class="form-grid">
+            <div class="form-group">
+                <label>Game Mode *</label>
+                <select [(ngModel)]="newConfig.mode_name">
+                    <option *ngFor="let mode of modes" [value]="mode.value">{{ mode.label }}</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Month/Year *</label>
+                <select [(ngModel)]="newConfig.month_year">
+                    <option *ngFor="let month of getMonthOptions()" [value]="month">
+                        {{ formatMonthYear(month) }}
+                    </option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Template Set *</label>
+                <select [(ngModel)]="newConfig.template_set_id">
+                    <option value="0" disabled>Select a template set</option>
+                    <option *ngFor="let set of templateSets" [value]="set.id">
+                        {{ set.name }} ({{ set.category }})
+                    </option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Priority</label>
+                <input type="number" [(ngModel)]="newConfig.priority" min="0" max="100">
+                <small>Higher priority = preferred when multiple configs match</small>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="newConfig.is_active">
+                Active
+            </label>
+        </div>
+
+        <div class="form-actions">
+            <button class="btn-primary" (click)="createConfiguration()">Create</button>
+            <button class="btn-secondary" (click)="showCreateForm = false; resetForm()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-bar">
+        <label>Filter by Mode:</label>
+        <select [(ngModel)]="filterMode" (ngModelChange)="onFilterChange()">
+            <option value="">All Modes</option>
+            <option *ngFor="let mode of modes" [value]="mode.value">{{ mode.label }}</option>
+        </select>
+    </div>
+
+    <!-- Configurations Table -->
+    <div class="configs-table">
+        <h3>Configurations ({{ configurations.length }})</h3>
+
+        <div *ngIf="configurations.length === 0" class="empty-message">
+            <p>No configurations yet. Create one to get started!</p>
+        </div>
+
+        <table *ngIf="configurations.length > 0">
+            <thead>
+                <tr>
+                    <th>Mode</th>
+                    <th>Month</th>
+                    <th>Template Set</th>
+                    <th>Priority</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr *ngFor="let config of configurations" [class.inactive]="!config.is_active">
+                    <td>
+                        <span class="mode-badge">{{ config.mode_name }}</span>
+                    </td>
+                    <td>
+                        <span class="month-label">{{ formatMonthYear(config.month_year) }}</span>
+                    </td>
+                    <td>
+                        <span class="template-name">{{ config.template_set_name }}</span>
+                    </td>
+                    <td>
+                        <span class="priority-badge">{{ config.priority }}</span>
+                    </td>
+                    <td>
+                        <button class="status-toggle" [class.active]="config.is_active" (click)="toggleActive(config)">
+                            {{ config.is_active ? '✓ Active' : '✗ Inactive' }}
+                        </button>
+                    </td>
+                    <td>
+                        <button class="btn-delete-small" (click)="deleteConfiguration(config.id)"
+                            title="Delete configuration">
+                            🗑️
+                        </button>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>

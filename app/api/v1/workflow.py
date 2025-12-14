@@ -40,6 +40,8 @@ class WorkflowCreateRequest(BaseModel):
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_master: Optional[bool] = False
+    mode_name: Optional[str] = None  # NEW: simple mode assignment
+    month_year: Optional[str] = None  # NEW: simple month assignment
     steps: Optional[List[StepModel]] = []
 
 
@@ -51,6 +53,8 @@ class WorkflowUpdateRequest(BaseModel):
     valid_from: Optional[str] = None
     valid_until: Optional[str] = None
     is_master: Optional[bool] = None
+    mode_name: Optional[str] = None  # NEW: simple mode assignment
+    month_year: Optional[str] = None  # NEW: simple month assignment
     steps: Optional[List[StepModel]] = None
 
 

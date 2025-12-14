@@ -1,0 +1,114 @@
+<div class="template-set-manager">
+    <div class="header">
+        <h2>📦 Template Set Manager</h2>
+        <button class="btn-primary" (click)="showCreateForm = !showCreateForm">
+            {{ showCreateForm ? 'Cancel' : '+ New Template Set' }}
+        </button>
+    </div>
+
+    <!-- Create Form -->
+    <div class="create-form" *ngIf="showCreateForm">
+        <h3>Create New Template Set</h3>
+        <div class="form-group">
+            <label>Name *</label>
+            <input type="text" [(ngModel)]="newSet.name" placeholder="e.g., Daily Login - December 2024">
+        </div>
+        <div class="form-group">
+            <label>Category *</label>
+            <select [(ngModel)]="newSet.category">
+                <option *ngFor="let cat of categories" [value]="cat.value">{{ cat.label }}</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Description</label>
+            <textarea [(ngModel)]="newSet.description" rows="3" placeholder="Optional description"></textarea>
+        </div>
+        <div class="form-actions">
+            <button class="btn-primary" (click)="createTemplateSet()">Create</button>
+            <button class="btn-secondary" (click)="showCreateForm = false; resetForm()">Cancel</button>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-bar">
+        <label>Filter by Category:</label>
+        <select [(ngModel)]="filterCategory" (ngModelChange)="onCategoryFilterChange()">
+            <option value="">All Categories</option>
+            <option *ngFor="let cat of categories" [value]="cat.value">{{ cat.label }}</option>
+        </select>
+    </div>
+
+    <!-- Main Content -->
+    <div class="content-grid">
+        <!-- Template Sets List -->
+        <div class="sets-panel">
+            <h3>Template Sets ({{ templateSets.length }})</h3>
+            <div class="sets-list">
+                <div *ngFor="let set of templateSets" class="set-card" [class.selected]="selectedSet?.id === set.id"
+                    (click)="selectTemplateSet(set)">
+                    <div class="set-info">
+                        <h4>{{ set.name }}</h4>
+                        <span class="category-badge">{{ set.category }}</span>
+                        <p class="description">{{ set.description || 'No description' }}</p>
+                        <div class="meta">
+                            <span class="workflow-count">🔧 {{ set.workflow_count }} workflows</span>
+                        </div>
+                    </div>
+                    <button class="btn-delete" (click)="deleteTemplateSet(set.id); $event.stopPropagation()"
+                        title="Delete set">
+                        🗑️
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Workflows Panel -->
+        <div class="workflows-panel">
+            <div *ngIf="!selectedSet" class="placeholder">
+                <p>👈 Select a template set to manage its workflows</p>
+            </div>
+
+            <div *ngIf="selectedSet">
+                <h3>{{ selectedSet.name }} - Workflows</h3>
+
+                <!-- Workflows in Set -->
+                <div class="section">
+                    <h4>Workflows in This Set ({{ selectedSetWorkflows.length }})</h4>
+                    <div class="workflow-list">
+                        <div *ngFor="let workflow of selectedSetWorkflows" class="workflow-item in-set">
+                            <div class="workflow-info">
+                                <span class="workflow-name">{{ workflow.name }}</span>
+                                <span *ngIf="workflow.is_master" class="master-badge">⭐ Master</span>
+                            </div>
+                            <button class="btn-remove" (click)="removeWorkflowFromSet(workflow.id)"
+                                title="Remove from set">
+                                ➖
+                            </button>
+                        </div>
+                        <div *ngIf="selectedSetWorkflows.length === 0" class="empty-message">
+                            No workflows in this set yet
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Available Workflows -->
+                <div class="section">
+                    <h4>Available Workflows</h4>
+                    <div class="workflow-list">
+                        <div *ngFor="let workflow of workflows" class="workflow-item"
+                            [class.disabled]="isWorkflowInSet(workflow.id)">
+                            <div class="workflow-info">
+                                <span class="workflow-name">{{ workflow.name }}</span>
+                                <span *ngIf="workflow.is_master" class="master-badge">⭐ Master</span>
+                            </div>
+                            <button class="btn-add" (click)="addWorkflowToSet(workflow.id)"
+                                [disabled]="isWorkflowInSet(workflow.id)" title="Add to set">
+                                ➕
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

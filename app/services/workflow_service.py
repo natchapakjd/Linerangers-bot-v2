@@ -58,7 +58,9 @@ class WorkflowService:
                 screen_height=data.get("screen_height", 540),
                 valid_from=data.get("valid_from"),
                 valid_until=data.get("valid_until"),
-                is_master=data.get("is_master", False)
+                is_master=data.get("is_master", False),
+                mode_name=data.get("mode_name"),
+                month_year=data.get("month_year")
             )
             session.add(workflow)
             await session.commit()
@@ -103,6 +105,10 @@ class WorkflowService:
                 workflow.valid_from = data["valid_from"]
             if "valid_until" in data:
                 workflow.valid_until = data["valid_until"]
+            if "mode_name" in data:
+                workflow.mode_name = data["mode_name"]
+            if "month_year" in data:
+                workflow.month_year = data["month_year"]
             if "is_master" in data:
                 # If setting as master, unset other masters
                 if data["is_master"]:

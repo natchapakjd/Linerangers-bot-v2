@@ -25,6 +25,10 @@ class Workflow(Base):
     # Master workflow flag - used as default
     is_master = Column(Boolean, default=False)
     
+    # Mode assignment - NEW SIMPLE APPROACH
+    mode_name = Column(String(100), nullable=True, index=True)  # e.g., "daily-login", "stage-farm"
+    month_year = Column(String(7), nullable=True, index=True)   # e.g., "2024-12", "2025-01"
+    
     # Metadata
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -42,6 +46,8 @@ class Workflow(Base):
             "valid_from": self.valid_from.isoformat() if self.valid_from else None,
             "valid_until": self.valid_until.isoformat() if self.valid_until else None,
             "is_master": self.is_master,
+            "mode_name": self.mode_name,
+            "month_year": self.month_year,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
             "steps": [step.to_dict() for step in self.steps]
@@ -77,6 +83,12 @@ class WorkflowStep(Base):
     threshold = Column(Float, default=0.8)
     match_all = Column(Boolean, default=False)  # Click all matches
     
+    # Retry options for image matching
+    skip_if_not_found = Column(Boolean, default=False)  # Skip step if template not found
+    max_wait_seconds = Column(Integer, default=10)  # Max seconds to wait for template
+    max_retries = Column(Integer, nullable=True)  # Max retry attempts (None = unlimited)
+    retry_interval = Column(Float, default=1.0)  # Seconds between retries
+    
     # Action after match: click, swipe, wait
     on_match_action = Column(String(50), default="click")
     
@@ -110,6 +122,10 @@ class WorkflowStep(Base):
             "template_name": self.template_name,
             "threshold": self.threshold,
             "match_all": self.match_all,
+            "skip_if_not_found": self.skip_if_not_found,
+            "max_wait_seconds": self.max_wait_seconds,
+            "max_retries": self.max_retries,
+            "retry_interval": self.retry_interval,
             "on_match_action": self.on_match_action,
             "condition_type": self.condition_type,
             "goto_step_on_true": self.goto_step_on_true,

@@ -12,9 +12,13 @@ import sys
 from app.api.v1 import endpoints_router, websocket_router, license_router, admin_license_router, auth_router
 from app.api.v1.remote import router as remote_router
 from app.api.v1.workflow import router as workflow_router
+from app.api.v1.template_set import router as template_set_router, mode_config_router
 from app.config import API_HOST, API_PORT
 from app.core.database import init_db
 from app.services.auth_service import get_auth_service
+
+# Import models to ensure tables are created
+from app.models.workflow_template_set import WorkflowTemplateSet, ModeConfiguration
 
 # Configure Loguru
 logger.remove()
@@ -44,6 +48,8 @@ app.include_router(admin_license_router)
 app.include_router(auth_router)
 app.include_router(remote_router)
 app.include_router(workflow_router)
+app.include_router(template_set_router)
+app.include_router(mode_config_router)
 
 # Serve static files (frontend)
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"

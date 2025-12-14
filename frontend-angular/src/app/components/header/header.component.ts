@@ -273,7 +273,8 @@ export class HeaderComponent {
     { id: 're-id', label: 'Re-ID', icon: '🔄', route: '/re-id', adminOnly: false },
     // { id: 'guild', label: 'Guild Raid', icon: '🏰', route: '/guild', adminOnly: false },
     { id: 'farm', label: 'Auto Farm', icon: '🌾', route: '/farm', adminOnly: false },
-    { id: 'workflow-builder', label: 'Workflow', icon: '⚙️', badge: 'NEW', route: '/workflow-builder', adminOnly: false },
+    { id: 'workflow-builder', label: 'Workflow', icon: '⚙️', route: '/workflow-builder', adminOnly: false },
+    // Template Sets and Mode Config removed - now using direct mode assignment in Workflow Builder
     { id: 'admin-license', label: 'Admin', icon: '👑', route: '/admin/license', adminOnly: true },
     { id: 'settings', label: 'Settings', icon: '🔧', route: '/settings', adminOnly: false }
   ];
