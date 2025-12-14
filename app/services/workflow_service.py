@@ -223,32 +223,100 @@ class WorkflowService:
                 elif step_type == "wait":
                     await asyncio.sleep(step.get("wait_duration_ms", 1000) / 1000)
                 
-                elif step_type == "image_match":
+                elif step_type == "image_match" or step_type == "find_all_click":
                     # Capture screen and find template
                     screenshot = adb.screenshot()
                     if screenshot is None:
                         return {"success": False, "message": f"Failed to capture screen at step {step_index + 1}"}
                     
-                    if step.get("match_all"):
-                        # Find all matches
-                        matches = template_service.find_all_templates(
-                            screenshot, 
-                            step["template_path"],
-                            step.get("threshold", 0.8)
-                        )
-                        for match in matches:
-                            adb.tap(match["x"], match["y"])
-                            await asyncio.sleep(0.3)
+                    # find_all_click always finds all matches
+                    should_find_all = step_type == "find_all_click" or step.get("match_all", False)
+                    
+                    # Retry logic with timeout and retry count limit
+                    import time
+                    max_wait = step.get("max_wait_seconds", 10)  # Default 10 seconds
+                    max_retries = step.get("max_retries", None)  # Default None = unlimited (only time limit)
+                    retry_interval = step.get("retry_interval", 1)  # Default 1 second
+                    start_time = time.time()
+                    retry_count = 0
+                    found = False
+                    
+                    if max_retries:
+                        print(f"[DEBUG] Searching for template: {step.get('template_name', 'unknown')}, max {max_retries} retries, {retry_interval}s interval")
                     else:
-                        # Find single match
-                        result = template_service.find_template(
-                            screenshot,
-                            step["template_path"],
-                            step.get("threshold", 0.8)
-                        )
-                        if result:
-                            adb.tap(result["x"], result["y"])
-                            await asyncio.sleep(0.3)
+                        print(f"[DEBUG] Searching for template: {step.get('template_name', 'unknown')}, max wait: {max_wait}s")
+                    
+                    while True:
+                        # Check timeout
+                        if (time.time() - start_time) >= max_wait:
+                            print(f"[DEBUG] Timeout reached ({max_wait}s)")
+                            break
+                        
+                        # Check retry count limit
+                        if max_retries and retry_count >= max_retries:
+                            print(f"[DEBUG] Max retries reached ({max_retries})")
+                            break
+                        
+                        # Capture fresh screenshot each retry
+                        screenshot = adb.screenshot()
+                        if screenshot is None:
+                            await asyncio.sleep(retry_interval)
+                            retry_count += 1
+                            continue
+                        
+                        if should_find_all:
+                            # Find all matches
+                            matches = template_service.find_all_templates(
+                                screenshot, 
+                                step["template_path"],
+                                step.get("threshold", 0.8),
+                                max_matches=50
+                            )
+                            if matches:
+                                print(f"[DEBUG] Found {len(matches)} matches after {retry_count} retries ({time.time() - start_time:.1f}s)")
+                                for idx, match in enumerate(matches):
+                                    print(f"[DEBUG] Clicking match {idx + 1}/{len(matches)} at ({match[0]}, {match[1]})")
+                                    adb.tap(match[0], match[1])
+                                    await asyncio.sleep(0.3)
+                                found = True
+                                break
+                        else:
+                            # Find single match
+                            result = template_service.find_template(
+                                screenshot,
+                                step["template_path"],
+                                step.get("threshold", 0.8)
+                            )
+                            if result:
+                                print(f"[DEBUG] Found template at ({result[0]}, {result[1]}) after {retry_count} retries ({time.time() - start_time:.1f}s)")
+                                adb.tap(result[0], result[1])
+                                await asyncio.sleep(0.3)
+                                found = True
+                                break
+                        
+                        # Not found yet, wait and retry
+                        retry_count += 1
+                        elapsed = time.time() - start_time
+                        if max_retries:
+                            print(f"[DEBUG] Retry {retry_count}/{max_retries} - not found, waiting {retry_interval}s...")
+                        else:
+                            print(f"[DEBUG] Template not found yet ({elapsed:.1f}/{max_wait}s), retrying...")
+                        await asyncio.sleep(retry_interval)
+                    
+                    # Check if we found it
+                    if not found:
+                        if max_retries:
+                            print(f"[DEBUG] Template not found after {retry_count} retries")
+                        else:
+                            print(f"[DEBUG] Template not found after {max_wait}s timeout")
+                        
+                        if not step.get("skip_if_not_found", False):
+                            if max_retries:
+                                return {"success": False, "message": f"Template not found at step {step_index + 1} after {retry_count} retries: {step.get('template_name', 'unknown')}"}
+                            else:
+                                return {"success": False, "message": f"Template not found at step {step_index + 1} after {max_wait}s: {step.get('template_name', 'unknown')}"}
+                        else:
+                            print(f"[DEBUG] Skipping step (skip_if_not_found=True)")
                 
                 elif step_type == "conditional":
                     screenshot = adb.screenshot()
@@ -265,6 +333,27 @@ class WorkflowService:
                         else:
                             if step.get("goto_step_on_false") is not None:
                                 step_index = step["goto_step_on_false"] - 1
+                
+                elif step_type == "press_back":
+                    # Press Android back key
+                    adb.press_key("KEYCODE_BACK")
+                    await asyncio.sleep(0.5)
+                
+                elif step_type == "start_game":
+                    # Start Line Rangers (without force stop)
+                    package_name = "com.linecorp.LGBJM"
+                    print(f"[DEBUG] Starting game: {package_name}")
+                    result = adb.start_app(package_name)
+                    print(f"[DEBUG] Start game result: {result}")
+                    await asyncio.sleep(3)  # Wait for game to load
+                
+                elif step_type == "restart_game":
+                    # Restart Line Rangers
+                    package_name = "com.linecorp.LGBJM"
+                    adb.force_stop_app(package_name)
+                    await asyncio.sleep(1)
+                    adb.start_app(package_name)
+                    await asyncio.sleep(3)  # Wait for game to load
                 
                 step_index += 1
                 

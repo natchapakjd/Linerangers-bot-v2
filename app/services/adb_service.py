@@ -89,6 +89,20 @@ class AdbService:
             logger.error(f"Tap error: {e}")
             return False
     
+    def press_key(self, keycode: str) -> bool:
+        """Press an Android key (e.g., KEYCODE_BACK, KEYCODE_HOME)."""
+        cmd = [
+            "adb", "-s", self.device_address,
+            "shell", "input", "keyevent", keycode
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=5)
+            return result.returncode == 0
+        except Exception as e:
+            logger.error(f"Failed to press key {keycode}: {e}")
+            return False
+    
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> bool:
         """Swipe from one point to another."""
         try:

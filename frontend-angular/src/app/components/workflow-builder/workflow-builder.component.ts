@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 interface WorkflowStep {
   id?: number;
   order_index: number;
-  step_type: 'click' | 'swipe' | 'wait' | 'image_match' | 'find_all_click' | 'conditional';
+  step_type: 'click' | 'swipe' | 'wait' | 'image_match' | 'find_all_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game';
   x?: number;
   y?: number;
   end_x?: number;
@@ -18,6 +18,10 @@ interface WorkflowStep {
   template_name?: string;
   threshold?: number;
   match_all?: boolean;
+  skip_if_not_found?: boolean;  // Skip step if template not found instead of failing
+  max_wait_seconds?: number;     // Max seconds to wait for template (default: 10)
+  max_retries?: number;          // Max retry attempts (default: unlimited, use time limit)
+  retry_interval?: number;       // Seconds between retries (default: 1)
   on_match_action?: string;
   description?: string;
   group_name?: string;
@@ -109,6 +113,10 @@ interface DeviceInfo {
                 <button [class.active]="currentMode === 'swipe_2point'" (click)="setMode('swipe_2point')" title="2-Point Swipe Mode">✌️</button>
                 <button [class.active]="currentMode === 'capture'" (click)="setMode('capture')" title="Capture Template (Drag Rectangle)">📷</button>
               </div>
+              <div class="device-controls">
+                <button class="icon-btn" (click)="pressBack()" title="Press Back (Android)">⬅️</button>
+                <button class="icon-btn" (click)="restartGame()" title="Restart Game">🔄🎮</button>
+              </div>
               <button class="icon-btn" (click)="refreshScreen()" title="Refresh Screen">🔄</button>
             </div>
           </div>
@@ -162,11 +170,14 @@ interface DeviceInfo {
             <div class="add-buttons">
               <button class="glass-button x-small" (click)="addStep('wait')">+ WAIT</button>
               <button class="glass-button x-small" (click)="addStep('image_match')">+ IMAGE</button>
+              <button class="glass-button x-small" (click)="addStep('press_back')">⬅️ BACK</button>
+              <button class="glass-button x-small" (click)="addStep('start_game')">▶️ START</button>
+              <button class="glass-button x-small" (click)="addStep('restart_game')">🔄 RESTART</button>
             </div>
           </div>
 
           <div class="steps-container glass-panel" cdkDropList (cdkDropListDropped)="dropStep($event)">
-             @for (step of currentWorkflow.steps; track step.order_index; let i = $index) {
+             @for (step of currentWorkflow.steps; track $index; let i = $index) {
               <div 
                 class="step-card"
                 cdkDrag
@@ -252,6 +263,17 @@ interface DeviceInfo {
                 </select>
               </div>
               <div class="input-group"><label>THRESHOLD</label><input type="number" class="glass-input" [(ngModel)]="editingStep.threshold" step="0.05" /></div>
+              
+              <!-- Retry Options -->
+              <div class="input-group-row">
+                <div class="input-group"><label>MAX WAIT(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_wait_seconds" placeholder="10" /></div>
+                <div class="input-group"><label>MAX RETRIES</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_retries" placeholder="∞" /></div>
+              </div>
+              <div class="input-group"><label>RETRY INTERVAL(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.retry_interval" placeholder="1" step="0.5" /></div>
+              <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="editingStep.skip_if_not_found">
+                <span>Skip if not found</span>
+              </label>
             }
 
              <div class="input-group">
@@ -453,6 +475,14 @@ interface DeviceInfo {
         background: rgba(255,255,255,0.1);
         border-color: var(--text-muted);
       }
+    }
+
+    .device-controls {
+      display: flex;
+      gap: 0.5rem;
+      margin-left: 0.5rem;
+      padding-left: 0.5rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.1);
     }
 
     /* Mode Indicator Banner */
@@ -985,6 +1015,56 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     }
   }
 
+  // Press Android Back button
+  async pressBack(): Promise<void> {
+    if (!this.selectedDevice) {
+      this.addLog('❌ No device selected');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/v1/devices/${this.selectedDevice}/key/back`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        this.addLog('⬅️ Pressed Back');
+        await this.refreshScreen();
+      } else {
+        this.addLog(`❌ Back failed: ${data.message}`);
+      }
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    }
+  }
+
+  // Restart the game
+  async restartGame(): Promise<void> {
+    if (!this.selectedDevice) {
+      this.addLog('❌ No device selected');
+      return;
+    }
+
+    try {
+      this.addLog('🔄 Restarting game...');
+      const response = await fetch(`/api/v1/devices/${this.selectedDevice}/restart-game`, {
+        method: 'POST'
+      });
+      const data = await response.json();
+      
+      if (data.success) {
+        this.addLog('✅ Game restarted');
+        await new Promise(r => setTimeout(r, 3000)); // Wait 3 seconds
+        await this.refreshScreen();
+      } else {
+        this.addLog(`❌ Restart failed: ${data.message}`);
+      }
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    }
+  }
+
   // Helper method to get actual image position accounting for object-fit: contain
   private getImageCoordinates(event: MouseEvent): { x: number; y: number } {
     const container = this.screenContainer.nativeElement;
@@ -1408,7 +1488,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     const step: WorkflowStep = {
       order_index: this.currentWorkflow.steps.length,
       step_type: type as any,
-      description: type === 'wait' ? 'Wait 1000ms' : 'Image match'
+      description: type === 'wait' ? 'Wait 1000ms' : type === 'press_back' ? 'Press Back key' : type === 'start_game' ? 'Start game' : type === 'restart_game' ? 'Restart game' : 'Image match'
     };
 
     if (type === 'wait') {
@@ -1418,7 +1498,9 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       step.match_all = false;
     }
 
-    this.currentWorkflow.steps.push(step);
+
+    // Create new array reference to trigger change detection
+    this.currentWorkflow.steps = [...this.currentWorkflow.steps, step];
     this.selectedStepIndex = this.currentWorkflow.steps.length - 1;
     this.editingStep = { ...step };
     this.addLog(`➕ Added ${type} step`);
@@ -1470,6 +1552,9 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       case 'image_match': return '🖼️';
       case 'find_all_click': return '🔄';
       case 'conditional': return '❓';
+      case 'press_back': return '⬅️';
+      case 'start_game': return '▶️';
+      case 'restart_game': return '🔄🎮';
       default: return '•';
     }
   }

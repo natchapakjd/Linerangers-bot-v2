@@ -520,3 +520,77 @@ async def get_all_device_screenshots():
         "devices": results
     }
 
+
+@router.post("/devices/{serial}/key/back", response_model=CommandResponse)
+async def press_back_key(serial: str):
+    """Press the Android Back key on a device."""
+    import subprocess
+    
+    manager = get_device_manager()
+    device = manager.get_device(serial)
+    
+    if not device:
+        return CommandResponse(success=False, message=f"Device {serial} not found")
+    
+    if device.status.value != "online":
+        return CommandResponse(success=False, message=f"Device {serial} is {device.status.value}")
+    
+    try:
+        result = subprocess.run(
+            ["adb", "-s", serial, "shell", "input", "keyevent", "KEYCODE_BACK"],
+            capture_output=True,
+            timeout=5
+        )
+        
+        if result.returncode == 0:
+            return CommandResponse(success=True, message="Back key pressed")
+        else:
+            return CommandResponse(success=False, message=f"Failed: {result.stderr.decode()}")
+            
+    except Exception as e:
+        return CommandResponse(success=False, message=str(e))
+
+
+@router.post("/devices/{serial}/restart-game", response_model=CommandResponse)
+async def restart_game(serial: str):
+    """Force stop and restart Line Rangers game."""
+    import subprocess
+    import time
+    
+    manager = get_device_manager()
+    device = manager.get_device(serial)
+    
+    if not device:
+        return CommandResponse(success=False, message=f"Device {serial} not found")
+    
+    if device.status.value != "online":
+        return CommandResponse(success=False, message=f"Device {serial} is {device.status.value}")
+    
+    # Line Rangers package name
+    package_name = "com.linecorp.LGBJM"
+    
+    try:
+        # Force stop the game
+        subprocess.run(
+            ["adb", "-s", serial, "shell", "am", "force-stop", package_name],
+            capture_output=True,
+            timeout=5
+        )
+        
+        time.sleep(1)
+        
+        # Start the game
+        result = subprocess.run(
+            ["adb", "-s", serial, "shell", "monkey", "-p", package_name, "-c", "android.intent.category.LAUNCHER", "1"],
+            capture_output=True,
+            timeout=5
+        )
+        
+        if result.returncode == 0:
+            return CommandResponse(success=True, message="Game restarted")
+        else:
+            return CommandResponse(success=False, message=f"Failed to start: {result.stderr.decode()}")
+            
+    except Exception as e:
+        return CommandResponse(success=False, message=str(e))
+
