@@ -7,7 +7,7 @@ import { BotService } from '../../services/bot.service';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <section class="screen-panel">
+    <section class="screen-panel glass-panel">
       <div class="panel-header">
         <h2>📺 Emulator Screen</h2>
       </div>
@@ -20,14 +20,14 @@ import { BotService } from '../../services/bot.service';
             <p>Start the bot to view emulator screen</p>
           </div>
         }
+        <div class="scanlines"></div>
       </div>
     </section>
   `,
   styles: [`
     .screen-panel {
-      background: #1a1a2e;
-      border: 1px solid rgba(0, 245, 255, 0.2);
-      border-radius: 12px;
+      /* Uses global glass-panel style via class in template, but here for overrides */
+      border-radius: var(--radius-md);
       overflow: hidden;
     }
 
@@ -36,14 +36,14 @@ import { BotService } from '../../services/bot.service';
       justify-content: space-between;
       align-items: center;
       padding: 1rem 1.25rem;
-      background: rgba(0, 0, 0, 0.3);
-      border-bottom: 1px solid rgba(0, 245, 255, 0.2);
+      border-bottom: 1px solid var(--glass-border);
 
       h2 {
-        font-family: 'Orbitron', monospace;
+        font-family: var(--font-display);
         font-size: 1rem;
         font-weight: 700;
-        color: #00f5ff;
+        color: var(--primary);
+        letter-spacing: 1px;
       }
     }
 
@@ -57,16 +57,25 @@ import { BotService } from '../../services/bot.service';
       justify-content: center;
       overflow: hidden;
     }
+    
+    .scanlines {
+      position: absolute; inset: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%);
+      background-size: 100% 4px;
+      pointer-events: none;
+      z-index: 10;
+    }
 
     .screen-placeholder {
       text-align: center;
-      color: #64748b;
+      color: var(--text-muted);
 
       span {
-        font-family: 'Orbitron', monospace;
+        font-family: var(--font-display);
         font-size: 1.5rem;
         display: block;
         margin-bottom: 0.5rem;
+        color: var(--danger);
         animation: flicker 2s infinite;
       }
     }
@@ -83,6 +92,7 @@ import { BotService } from '../../services/bot.service';
       user-select: none;
       -webkit-user-drag: none;
       pointer-events: auto;
+      filter: contrast(1.1) brightness(1.1);
     }
   `]
 })

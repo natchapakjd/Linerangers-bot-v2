@@ -18,71 +18,104 @@ interface DeviceScreenshot {
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="dashboard">
-      <div class="dashboard-header">
-        <h2>📺 Device Overview</h2>
+    <div class="dashboard container">
+      <!-- Dashboard Header -->
+      <div class="dashboard-header animate-fade-in">
+        <div class="title-group">
+          <h2>DEVICE <span class="text-gradient">COMMAND CENTER</span></h2>
+          <p class="subtitle">Real-time monitoring and control system</p>
+        </div>
+        
         <div class="header-actions">
-          <button class="btn btn-secondary" (click)="refreshScreenshots()">
-            🔄 Refresh
+          <div class="stat-pill glass-panel">
+            <span class="active-dot"></span>
+            <span class="stat-value">{{ devices().length }}</span>
+            <span class="stat-label">Online</span>
+          </div>
+
+          <button class="glass-button refresh-btn" (click)="refreshScreenshots()" [disabled]="isLoading()">
+            <span class="icon" [class.spinning]="isLoading()">🔄</span> 
+            {{ isLoading() ? 'SCANNING...' : 'REFRESH SYSTEM' }}
           </button>
-          <span class="device-count">{{ devices().length }} devices</span>
         </div>
       </div>
 
-      @if (isLoading()) {
-        <div class="loading-state">
-          <div class="spinner"></div>
-          <p>Loading devices...</p>
+      <!-- Loading State -->
+      @if (isLoading() && devices().length === 0) {
+        <div class="state-container glass-panel animate-fade-in">
+          <div class="scanner-line"></div>
+          <p>SCANNING NETWORK FOR DEVICES...</p>
         </div>
-      } @else if (devices().length === 0) {
-        <div class="empty-state">
-          <span class="empty-icon">📱</span>
-          <h3>No Devices Found</h3>
-          <p>Connect an emulator or device via ADB to get started</p>
-          <button class="btn btn-primary" (click)="refreshScreenshots()">
-            🔍 Scan for Devices
+      } 
+      
+      <!-- Empty State -->
+      @else if (devices().length === 0) {
+        <div class="state-container empty-state glass-panel animate-fade-in">
+          <div class="icon-ring">
+            <span class="empty-icon">📡</span>
+          </div>
+          <h3>NO SIGNALS DETECTED</h3>
+          <p>Verify ADB connections or initialize emulator instances.</p>
+          <button class="glass-button primary-glow" (click)="refreshScreenshots()">
+            INITIALIZE SCAN
           </button>
         </div>
-      } @else {
+      } 
+      
+      <!-- Device Grid -->
+      @else {
         <div class="device-grid">
           @for (device of devices(); track device.serial) {
-            <div class="device-card" [class.offline]="device.status !== 'online'" [class.running]="device.is_running">
-              <div class="device-header">
-                <span class="device-serial">{{ device.serial }}</span>
-                <span class="device-status" [class]="device.status">
-                  {{ device.status === 'online' ? '🟢' : '🔴' }} {{ device.status }}
+            <div 
+              class="device-card glass-panel" 
+              [class.active-run]="device.is_running"
+              [class.offline]="device.status !== 'online'"
+            >
+              <!-- Card Header -->
+              <div class="card-header">
+                <span class="serial-code">{{ device.serial }}</span>
+                <span class="status-badge" [class]="device.status">
+                  <span class="status-dot"></span>
+                  {{ device.status | uppercase }}
                 </span>
               </div>
-              
-              <div class="screen-container">
+
+              <!-- Screen Preview -->
+              <div class="screen-frame">
                 @if (device.success && device.image) {
-                  <img [src]="device.image" class="screen-image" alt="Device Screen" />
+                  <img [src]="device.image" class="device-screen" alt="Screen" />
                 } @else {
-                  <div class="screen-placeholder">
-                    <span>📵</span>
-                    <p>{{ device.message || 'No signal' }}</p>
+                  <div class="screen-offline">
+                    <span class="offline-icon">📶</span>
+                    <span>NO SIGNAL</span>
                   </div>
                 }
                 
+                <!-- Overlays -->
                 @if (device.is_running) {
-                  <div class="running-overlay">
-                    <div class="pulse-ring"></div>
-                    <span class="task-badge">{{ getTaskLabel(device.task) }}</span>
+                  <div class="active-overlay">
+                    <div class="processing-bar">
+                      <div class="bar-fill"></div>
+                    </div>
+                    <span class="task-tag">{{ getTaskLabel(device.task) | uppercase }}</span>
                   </div>
                 }
+                <div class="scanlines"></div>
+                <div class="glare"></div>
               </div>
-              
-              <div class="device-footer">
-                @if (device.is_running) {
-                  <span class="status-running">▶️ {{ getTaskLabel(device.task) }}</span>
-                } @else if (device.task !== 'none') {
-                  <span class="status-assigned">⏸️ {{ getTaskLabel(device.task) }} (paused)</span>
-                } @else {
-                  <span class="status-idle">💤 Idle</span>
-                }
+
+              <!-- Card Actions -->
+              <div class="card-footer">
+                <div class="status-info">
+                  @if (device.is_running) {
+                    <span class="info-active">▶ EXECUTING TASK</span>
+                  } @else {
+                    <span class="info-idle">💤 SYSTEM IDLE</span>
+                  }
+                </div>
                 
-                <div class="device-actions">
-                  <button class="btn-icon" (click)="goToDailyLogin(device.serial)" title="Daily Login">
+                <div class="action-buttons">
+                  <button class="icon-btn" (click)="goToDailyLogin(device.serial)" title="Schedule Login">
                     📅
                   </button>
                 </div>
@@ -95,268 +128,323 @@ interface DeviceScreenshot {
   `,
   styles: [`
     .dashboard {
-      padding: 1rem;
+      padding-top: 2rem;
     }
 
     .dashboard-header {
       display: flex;
       justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1.5rem;
+      align-items: flex-end;
+      margin-bottom: 2.5rem;
+      border-bottom: 1px solid var(--glass-border);
+      padding-bottom: 1.5rem;
     }
 
-    .dashboard-header h2 {
-      font-size: 1.5rem;
-      font-weight: 700;
-      color: #1e3a8a;
-      margin: 0;
+    .title-group h2 {
+      font-size: 2.2rem;
+      margin-bottom: 0px;
+      letter-spacing: 1px;
+    }
+
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      letter-spacing: 0.5px;
+      margin-top: 0.25rem;
     }
 
     .header-actions {
       display: flex;
-      align-items: center;
       gap: 1rem;
+      align-items: center;
     }
 
-    .device-count {
-      color: #64748b;
-      font-size: 0.9rem;
-    }
-
-    .btn {
+    .stat-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.8rem;
       padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 8px;
-      font-size: 0.9rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
+      border-radius: var(--radius-pill);
+      background: rgba(56, 189, 248, 0.05); /* Blue tint */
+      border: 1px solid rgba(56, 189, 248, 0.15);
     }
 
-    .btn-primary {
-      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-      color: white;
-    }
-
-    .btn-secondary {
-      background: white;
-      color: #3b82f6;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-    }
-
-    .btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-    }
-
-    /* Grid Layout */
-    .device-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 1.5rem;
-    }
-
-    /* Device Card */
-    .device-card {
-      background: white;
-      border: 1px solid rgba(59, 130, 246, 0.15);
-      border-radius: 16px;
-      overflow: hidden;
-      transition: all 0.3s;
-      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
-    }
-
-    .device-card:hover {
-      border-color: rgba(59, 130, 246, 0.4);
-      box-shadow: 0 10px 30px rgba(59, 130, 246, 0.15);
-      transform: translateY(-2px);
-    }
-
-    .device-card.running {
-      border-color: rgba(34, 197, 94, 0.5);
-      box-shadow: 0 4px 20px rgba(34, 197, 94, 0.15);
-    }
-
-    .device-card.offline {
-      opacity: 0.6;
-    }
-
-    /* Device Header */
-    .device-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 0.75rem 1rem;
-      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .device-serial {
-      font-family: 'JetBrains Mono', 'Consolas', monospace;
-      font-size: 0.85rem;
-      color: white;
-    }
-
-    .device-status {
-      font-size: 0.75rem;
-      padding: 0.2rem 0.5rem;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-    }
-
-    /* Screen Container */
-    .screen-container {
-      position: relative;
-      aspect-ratio: 9 / 16;
-      max-height: 400px;
-      background: #000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-
-    .screen-image {
-      width: 100%;
-      height: 100%;
-      object-fit: contain;
-    }
-
-    .screen-placeholder {
-      text-align: center;
-      color: #64748b;
-    }
-
-    .screen-placeholder span {
-      font-size: 2rem;
-      display: block;
-      margin-bottom: 0.5rem;
-    }
-
-    .screen-placeholder p {
-      font-size: 0.8rem;
-    }
-
-    /* Running Overlay */
-    .running-overlay {
-      position: absolute;
-      top: 10px;
-      right: 10px;
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-    }
-
-    .pulse-ring {
-      width: 12px;
-      height: 12px;
+    .active-dot {
+      width: 8px; height: 8px;
+      background: var(--success);
       border-radius: 50%;
-      background: #22c55e;
-      animation: pulse 2s infinite;
+      box-shadow: 0 0 8px var(--success);
+      animation: pulseGreen 2s infinite;
     }
 
-    @keyframes pulse {
-      0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.6); }
-      70% { box-shadow: 0 0 0 10px rgba(34, 197, 94, 0); }
-      100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    .stat-value {
+      font-family: var(--font-display);
+      font-weight: 700;
+      color: var(--text-main);
+      font-size: 1.1rem;
     }
 
-    .task-badge {
-      background: rgba(34, 197, 94, 0.9);
-      color: white;
-      padding: 0.25rem 0.5rem;
-      border-radius: 5px;
-      font-size: 0.7rem;
+    .stat-label {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
       font-weight: 600;
     }
 
-    /* Device Footer */
-    .device-footer {
+    .refresh-btn {
+      min-width: 170px;
       display: flex;
-      justify-content: space-between;
+      justify-content: center;
       align-items: center;
-      padding: 0.75rem 1rem;
-      background: #f8fafc;
-      border-top: 1px solid rgba(59, 130, 246, 0.1);
+      gap: 0.6rem;
     }
 
-    .status-running {
-      color: #22c55e;
-      font-size: 0.85rem;
-      font-weight: 600;
+    .spinning {
+      animation: spin 1s linear infinite;
     }
 
-    .status-assigned {
-      color: #f59e0b;
-      font-size: 0.85rem;
-    }
-
-    .status-idle {
-      color: #94a3b8;
-      font-size: 0.85rem;
-    }
-
-    .device-actions {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .btn-icon {
-      background: rgba(59, 130, 246, 0.1);
-      border: none;
-      padding: 0.4rem 0.6rem;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .btn-icon:hover {
-      background: rgba(59, 130, 246, 0.2);
-    }
-
-    /* Empty & Loading States */
-    .empty-state, .loading-state {
+    /* --- States --- */
+    .state-container {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      padding: 4rem;
+      padding: 5rem 2rem;
       text-align: center;
-      background: white;
-      border-radius: 16px;
-      border: 1px solid rgba(59, 130, 246, 0.15);
+      position: relative;
+      overflow: hidden;
+      min-height: 400px;
+    }
+
+    .scanner-line {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 2px;
+      background: var(--primary);
+      box-shadow: 0 0 15px var(--primary);
+      animation: scanDown 2s infinite cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 0.7;
+    }
+
+    .icon-ring {
+      width: 90px; height: 90px;
+      border: 1px solid var(--glass-border);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 2rem;
+      background: rgba(255, 255, 255, 0.02);
+      box-shadow: 0 0 30px rgba(0,0,0,0.2);
     }
 
     .empty-icon {
-      font-size: 4rem;
-      margin-bottom: 1rem;
+      font-size: 3rem;
+      opacity: 0.3;
+      filter: grayscale(1);
     }
 
-    .empty-state h3 {
-      font-size: 1.5rem;
-      margin-bottom: 0.5rem;
-      color: #1e3a8a;
+    /* --- Grid --- */
+    .device-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 2rem;
+      animation: fadeIn 0.4s ease-out;
     }
 
-    .empty-state p {
-      color: #64748b;
-      margin-bottom: 1.5rem;
+    /* --- Device Card --- */
+    .device-card {
+      transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
     }
 
-    .spinner {
-      width: 40px;
-      height: 40px;
-      border: 3px solid rgba(59, 130, 246, 0.2);
-      border-top-color: #3b82f6;
+    .device-card:hover {
+      transform: translateY(-6px);
+      border-color: rgba(56, 189, 248, 0.3);
+      box-shadow: 0 12px 40px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    .device-card.active-run {
+      border-color: rgba(52, 211, 153, 0.3);
+      box-shadow: 0 0 20px rgba(52, 211, 153, 0.05);
+    }
+
+    .card-header {
+      padding: 1rem 1.25rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .serial-code {
+      font-family: 'Consolas', monospace;
+      color: var(--text-main);
+      font-size: 0.9rem;
+      letter-spacing: 0.5px;
+      opacity: 0.9;
+    }
+
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .status-badge.online {
+      background: rgba(52, 211, 153, 0.1);
+      border-color: rgba(52, 211, 153, 0.2);
+      color: var(--success);
+    }
+
+    .status-badge.offline {
+      background: rgba(251, 113, 133, 0.1);
+      border-color: rgba(251, 113, 133, 0.2);
+      color: var(--danger);
+    }
+
+    .status-dot {
+      width: 6px; height: 6px;
       border-radius: 50%;
-      animation: spin 1s linear infinite;
-      margin-bottom: 1rem;
+      background: currentColor;
+    }
+    
+    .status-badge.online .status-dot {
+      box-shadow: 0 0 6px currentColor;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
+    /* Screen Frame */
+    .screen-frame {
+      position: relative;
+      aspect-ratio: 16 / 9; /* Landscape */
+      background: #000;
+      margin: 1.25rem;
+      border-radius: var(--radius-xs);
+      overflow: hidden;
+      border: 1px solid #1e293b;
+      box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
     }
+
+    .device-screen {
+      width: 100%; height: 100%;
+      object-fit: contain;
+      filter: contrast(1.1) brightness(1.1);
+      opacity: 0.9;
+    }
+
+    /* Scanlines and Glare removed for clean view */
+
+    .screen-offline {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-dim);
+      gap: 0.75rem;
+    }
+
+    .offline-icon {
+      font-size: 2.5rem;
+      opacity: 0.3;
+    }
+
+    /* Active Overlay */
+    .active-overlay {
+      position: absolute;
+      top: 12px; right: 12px; left: 12px;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 6px;
+    }
+
+    .task-tag {
+      background: rgba(0,0,0,0.8);
+      color: var(--success);
+      border: 1px solid var(--success);
+      font-weight: 700;
+      font-size: 0.65rem;
+      padding: 3px 8px;
+      border-radius: 4px;
+      backdrop-filter: blur(4px);
+    }
+
+    .processing-bar {
+      width: 100%;
+      height: 2px;
+      background: rgba(255,255,255,0.1);
+      overflow: hidden;
+      border-radius: 2px;
+    }
+
+    .bar-fill {
+      width: 30%;
+      height: 100%;
+      background: var(--success);
+      box-shadow: 0 0 10px var(--success);
+      animation: barLoad 1.5s infinite ease-in-out;
+    }
+
+    /* Card Footer */
+    .card-footer {
+      padding: 1rem 1.25rem;
+      background: rgba(0,0,0,0.2);
+      border-top: 1px solid var(--glass-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: auto;
+    }
+
+    .info-active {
+      color: var(--success);
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      display: flex; 
+      align-items: center; 
+      gap: 0.5rem;
+    }
+
+    .info-idle {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+    }
+
+    .icon-btn {
+      background: transparent;
+      border: 1px solid var(--glass-border);
+      color: var(--text-muted);
+      width: 36px; height: 36px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      
+      &:hover {
+        background: rgba(255,255,255,0.05);
+        color: var(--text-main);
+        border-color: rgba(255,255,255,0.1);
+      }
+    }
+
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes scanDown { 0% { top: 0; opacity: 1; } 100% { top: 100%; opacity: 0; } }
+    @keyframes barLoad { 0% { transform: translateX(-100%); } 100% { transform: translateX(200%); } }
+    @keyframes pulseGreen { 0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.4); } 70% { box-shadow: 0 0 0 6px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
   `]
 })
 export class DashboardComponent implements OnInit, OnDestroy {

@@ -42,315 +42,270 @@ interface DeviceInfo {
   standalone: true,
   imports: [CommonModule, FormsModule, DragDropModule],
   template: `
-    <div class="workflow-builder">
-      <div class="header-section">
-        <h2 class="page-title">🔧 Workflow Builder</h2>
-        <div class="header-actions">
-          <select [(ngModel)]="selectedWorkflowId" (change)="loadWorkflow()" class="workflow-select">
-            <option value="">-- New Workflow --</option>
-            @for (w of workflows(); track w.id) {
-              <option [value]="w.id">{{ w.name }} {{ w.is_master ? '⭐' : '' }}</option>
-            }
-          </select>
-          <button class="btn btn-primary" (click)="saveWorkflow()" [disabled]="isSaving()">
-            {{ isSaving() ? '⏳' : '💾' }} Save
-          </button>
-          <button class="btn btn-success" (click)="executeWorkflow()" [disabled]="!currentWorkflow.id || isExecuting()">
-            {{ isExecuting() ? '⏳' : '▶️' }} Run
-          </button>
-          <button class="btn btn-warning" (click)="setAsMaster()" [disabled]="!currentWorkflow.id">
-            ⭐ Set Master
-          </button>
+    <div class="workflow-builder container">
+      <!-- Header / Toolbar -->
+      <div class="builder-header glass-panel">
+        <div class="title-group">
+          <h2>WORKFLOW <span class="text-gradient">ENGINEER</span></h2>
         </div>
-      </div>
-
-      <!-- Workflow Info -->
-      <div class="workflow-info card">
-        <div class="info-row">
-          <div class="form-group">
-            <label>Workflow Name</label>
-            <input type="text" [(ngModel)]="currentWorkflow.name" placeholder="Enter workflow name..." />
-          </div>
-          <div class="form-group">
-            <label>Description</label>
-            <input type="text" [(ngModel)]="currentWorkflow.description" placeholder="Description..." />
-          </div>
-          <div class="form-group">
-            <label>Device</label>
-            <select [(ngModel)]="selectedDevice">
-              @for (device of devices(); track device.serial) {
-                <option [value]="device.serial">{{ device.serial }} {{ device.status === 'online' ? '🟢' : '🔴' }}</option>
+        
+        <div class="toolbar">
+          <div class="select-wrapper">
+             <select [(ngModel)]="selectedWorkflowId" (change)="loadWorkflow()" class="glass-input">
+              <option value="">-- New Workflow --</option>
+              @for (w of workflows(); track w.id) {
+                <option [value]="w.id">{{ w.name }} {{ w.is_master ? '(Master)' : '' }}</option>
               }
             </select>
           </div>
+         
+          <div class="button-group">
+            <button class="glass-button success" (click)="saveWorkflow()" [disabled]="isSaving()">
+              {{ isSaving() ? 'SAVING...' : '💾 SAVE' }}
+            </button>
+            <button class="glass-button primary" (click)="executeWorkflow()" [disabled]="!currentWorkflow.id || isExecuting()">
+              {{ isExecuting() ? 'RUNNING...' : '▶ EXECUTE' }}
+            </button>
+            <button class="glass-button warning" (click)="setAsMaster()" [disabled]="!currentWorkflow.id">
+              ⭐ MASTER
+            </button>
+            <button class="glass-button danger-btn" (click)="deleteWorkflow()" [disabled]="!currentWorkflow.id">
+              🗑️ DELETE
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="main-content">
-        <!-- Screen Preview -->
-        <div class="preview-section">
-          <div class="preview-header">
-            <h3>📱 Screen Preview ({{ currentWorkflow.screen_width }}x{{ currentWorkflow.screen_height }})</h3>
-            <div class="mode-selector">
-              <button 
-                class="mode-btn" 
-                [class.active]="currentMode === 'click'"
-                (click)="currentMode = 'click'"
-              >📍 Click</button>
-              <button 
-                class="mode-btn" 
-                [class.active]="currentMode === 'swipe'"
-                (click)="currentMode = 'swipe'"
-              >👆 Swipe</button>
-              <button 
-                class="mode-btn" 
-                [class.active]="currentMode === 'swipe_2point'"
-                (click)="currentMode = 'swipe_2point'; swipeFirstPoint = null"
-              >👆✌️ 2-Point</button>
-              <button 
-                class="mode-btn" 
-                [class.active]="currentMode === 'capture'"
-                (click)="currentMode = 'capture'"
-              >📷 Capture</button>
-              @if (swipePoints.length > 0) {
-                <button class="btn btn-secondary btn-small" (click)="clearSwipeOverlay()">🗑️</button>
-              }
+      <!-- Settings Row -->
+      <div class="settings-row glass-panel">
+        <div class="input-group">
+          <label>WORKFLOW NAME</label>
+          <input type="text" class="glass-input" [(ngModel)]="currentWorkflow.name" placeholder="Enter name..." />
+        </div>
+        <div class="input-group flex-2">
+          <label>DESCRIPTION</label>
+          <input type="text" class="glass-input" [(ngModel)]="currentWorkflow.description" placeholder="Optional description..." />
+        </div>
+        <div class="input-group">
+          <label>TARGET DEVICE</label>
+          <select [(ngModel)]="selectedDevice" class="glass-input">
+            @for (device of devices(); track device.serial) {
+              <option [value]="device.serial">{{ device.serial }} {{ device.status === 'online' ? '🟢' : '🔴' }}</option>
+            }
+          </select>
+        </div>
+      </div>
+
+      <div class="builder-columns">
+        <!-- Visualization / Canvas -->
+        <div class="canvas-column">
+          <div class="panel-header">
+            <h3>VISUALIZATION</h3>
+            <div class="canvas-controls">
+               <div class="mode-toggles">
+                <button [class.active]="currentMode === 'click'" (click)="currentMode = 'click'" title="Click">📍</button>
+                <button [class.active]="currentMode === 'swipe'" (click)="currentMode = 'swipe'" title="Swipe">👆</button>
+                <button [class.active]="currentMode === 'swipe_2point'" (click)="currentMode = 'swipe_2point'; swipeFirstPoint = null" title="2-Point Swipe">✌️</button>
+                <button [class.active]="currentMode === 'capture'" (click)="currentMode = 'capture'" title="Capture Template">📷</button>
+              </div>
+              <button class="icon-btn" (click)="refreshScreen()" title="Refresh Screen">🔄</button>
             </div>
-            <button class="btn btn-secondary btn-small" (click)="refreshScreen()">🔄</button>
           </div>
           
-          <div 
-            class="screen-container"
-            #screenContainer
-            (mousedown)="onMouseDown($event)"
-            (mousemove)="onMouseMove($event)"
-            (mouseup)="onMouseUp($event)"
-            (mouseleave)="onMouseUp($event)"
-          >
-            @if (screenImage()) {
-              <img [src]="screenImage()" alt="Screen" class="screen-image" />
-            } @else {
-              <div class="no-screen">
-                <span class="no-screen-icon">📱</span>
-                <span>Select a device and click refresh</span>
-              </div>
-            }
+          <div class="screen-wrapper glass-panel">
+            <div 
+              class="screen-container"
+              #screenContainer
+              (mousedown)="onMouseDown($event)"
+              (mousemove)="onMouseMove($event)"
+              (mouseup)="onMouseUp($event)"
+              (mouseleave)="onMouseUp($event)"
+            >
+              @if (screenImage()) {
+                <img [src]="screenImage()" alt="Screen" class="screen-image" />
+              } @else {
+                <div class="no-screen">
+                  <span class="no-screen-icon">📡</span>
+                  <p>NO SIGNAL SOURCE</p>
+                  <small>Select a device to begin</small>
+                </div>
+              }
+              
+              <!-- Overlays -->
+              <canvas #overlayCanvas class="overlay-canvas" [width]="currentWorkflow.screen_width" [height]="currentWorkflow.screen_height"></canvas>
+              
+              <div class="scanlines"></div>
+            </div>
             
-            <!-- Overlay for drawing -->
-            <canvas 
-              #overlayCanvas 
-              class="overlay-canvas"
-              [width]="currentWorkflow.screen_width"
-              [height]="currentWorkflow.screen_height"
-            ></canvas>
-            
-            <!-- Show click/swipe preview -->
-            @if (isDragging && currentMode === 'swipe') {
-              <div 
-                class="swipe-preview" 
-                [style.left.px]="dragStart.x" 
-                [style.top.px]="dragStart.y"
-              >
-                <div class="swipe-line" 
-                  [style.width.px]="getSwipeDistance()"
-                  [style.transform]="'rotate(' + getSwipeAngle() + 'deg)'"
-                ></div>
-              </div>
-            }
-          </div>
-          
-          <div class="coords-display">
-            Position: ({{ mouseX }}, {{ mouseY }})
+            <div class="status-bar">
+              <span>RES: {{ currentWorkflow.screen_width }}x{{ currentWorkflow.screen_height }}</span>
+              <span>XY: {{ mouseX }}, {{ mouseY }}</span>
+            </div>
           </div>
         </div>
 
-        <!-- Steps Panel -->
-        <div class="steps-section">
-          <div class="steps-header">
-            <h3>📋 Steps ({{ currentWorkflow.steps.length }})</h3>
-            <div class="step-actions">
-              <button class="btn btn-small" (click)="addStep('wait')">⏱️ Wait</button>
-              <button class="btn btn-small" (click)="addStep('image_match')">🖼️ Image</button>
+        <!-- Logic / Steps -->
+        <div class="logic-column">
+           <div class="panel-header">
+            <h3>SEQUENCE LOGIC ({{ currentWorkflow.steps.length }})</h3>
+            <div class="add-buttons">
+              <button class="glass-button x-small" (click)="addStep('wait')">+ WAIT</button>
+              <button class="glass-button x-small" (click)="addStep('image_match')">+ IMAGE</button>
             </div>
           </div>
 
-          <div 
-            class="steps-list"
-            cdkDropList
-            (cdkDropListDropped)="dropStep($event)"
-          >
-            @for (step of currentWorkflow.steps; track step.order_index; let i = $index) {
+          <div class="steps-container glass-panel" cdkDropList (cdkDropListDropped)="dropStep($event)">
+             @for (step of currentWorkflow.steps; track step.order_index; let i = $index) {
               <div 
-                class="step-item"
+                class="step-card"
                 cdkDrag
                 [class.selected]="selectedStepIndex === i"
                 (click)="selectStep(i)"
               >
-                <div class="step-drag-handle" cdkDragHandle>⋮⋮</div>
-                <span class="step-index">{{ i + 1 }}</span>
-                <span class="step-icon">{{ getStepIcon(step) }}</span>
-                @if (step.group_name) {
-                  <span class="group-badge" [style.background-color]="getGroupColor(step.group_name)">{{ step.group_name }}</span>
-                }
-                <span class="step-info">{{ getStepDescription(step) }}</span>
-                <button class="btn-icon" (click)="editStep(i); $event.stopPropagation()">✏️</button>
-                <button class="btn-icon danger" (click)="deleteStep(i); $event.stopPropagation()">🗑️</button>
+                <div class="step-handle" cdkDragHandle>⋮</div>
+                
+                <div class="step-content">
+                  <div class="step-top">
+                    <span class="step-number">#{{ i + 1 }}</span>
+                    <span class="step-type">{{ step.step_type | uppercase }}</span>
+                    @if (step.group_name) {
+                      <span class="group-tag" [style.background-color]="getGroupColor(step.group_name)">{{ step.group_name }}</span>
+                    }
+                  </div>
+                  <div class="step-desc">{{ getStepDescription(step) }}</div>
+                </div>
+
+                <div class="step-actions">
+                  <button class="action-btn" (click)="editStep(i); $event.stopPropagation()">✏️</button>
+                  <button class="action-btn danger" (click)="deleteStep(i); $event.stopPropagation()">×</button>
+                </div>
               </div>
             }
 
             @if (currentWorkflow.steps.length === 0) {
-              <div class="no-steps">
-                <p>No steps yet. Click on the screen preview to add steps.</p>
+              <div class="empty-steps">
+                <span>Start by clicking on the screen or adding a logic step.</span>
               </div>
             }
           </div>
+        </div>
+      </div>
 
-          <!-- Step Editor -->
-          @if (selectedStepIndex >= 0 && editingStep) {
-            <div class="step-editor card">
-              <h4>Edit Step {{ selectedStepIndex + 1 }}</h4>
-              
-              <div class="form-group">
-                <label>Type</label>
-                <select [(ngModel)]="editingStep.step_type">
-                  <option value="click">Click</option>
-                  <option value="swipe">Swipe</option>
-                  <option value="wait">Wait</option>
-                  <option value="image_match">Image Match</option>
-                  <option value="find_all_click">Find All & Click</option>
+      <!-- Properties Panel (Bottom or Overlay) -->
+      @if (selectedStepIndex >= 0 && editingStep) {
+        <div class="properties-panel glass-panel animate-slide-up">
+          <div class="panel-header">
+            <h4>PROPERTIES: STEP #{{ selectedStepIndex + 1 }}</h4>
+            <button class="close-btn" (click)="selectedStepIndex = -1; editingStep = null">×</button>
+          </div>
+          
+          <div class="props-grid">
+            <div class="input-group">
+              <label>ACTION TYPE</label>
+              <select [(ngModel)]="editingStep.step_type" class="glass-input">
+                <option value="click">Click</option>
+                <option value="swipe">Swipe</option>
+                <option value="wait">Wait</option>
+                <option value="image_match">Image Match</option>
+                <option value="find_all_click">Find All & Click</option>
+              </select>
+            </div>
+
+            <!-- Conditional Inputs based on Type -->
+            @if (['click', 'swipe'].includes(editingStep.step_type)) {
+              <div class="input-group-row">
+                <div class="input-group"><label>X</label><input type="number" class="glass-input" [(ngModel)]="editingStep.x" /></div>
+                <div class="input-group"><label>Y</label><input type="number" class="glass-input" [(ngModel)]="editingStep.y" /></div>
+              </div>
+            }
+
+            @if (editingStep.step_type === 'swipe') {
+              <div class="input-group-row">
+                <div class="input-group"><label>END X</label><input type="number" class="glass-input" [(ngModel)]="editingStep.end_x" /></div>
+                <div class="input-group"><label>END Y</label><input type="number" class="glass-input" [(ngModel)]="editingStep.end_y" /></div>
+              </div>
+              <div class="input-group"><label>DURATION (MS)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.swipe_duration_ms" /></div>
+            }
+
+            @if (editingStep.step_type === 'wait') {
+              <div class="input-group"><label>DURATION (MS)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.wait_duration_ms" /></div>
+            }
+
+            @if (['image_match', 'find_all_click'].includes(editingStep.step_type)) {
+               <div class="input-group">
+                <label>TEMPLATE</label>
+                <select [(ngModel)]="editingStep.template_path" class="glass-input">
+                  @for (t of templates(); track t.id) {
+                    <option [value]="t.file_path">{{ t.name }}</option>
+                  }
                 </select>
               </div>
+              <div class="input-group"><label>THRESHOLD</label><input type="number" class="glass-input" [(ngModel)]="editingStep.threshold" step="0.05" /></div>
+            }
 
-              @if (editingStep.step_type === 'click' || editingStep.step_type === 'swipe') {
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>X</label>
-                    <input type="number" [(ngModel)]="editingStep.x" />
-                  </div>
-                  <div class="form-group">
-                    <label>Y</label>
-                    <input type="number" [(ngModel)]="editingStep.y" />
-                  </div>
-                </div>
-              }
-
-              @if (editingStep.step_type === 'swipe') {
-                <div class="form-row">
-                  <div class="form-group">
-                    <label>End X</label>
-                    <input type="number" [(ngModel)]="editingStep.end_x" />
-                  </div>
-                  <div class="form-group">
-                    <label>End Y</label>
-                    <input type="number" [(ngModel)]="editingStep.end_y" />
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label>Duration (ms)</label>
-                  <input type="number" [(ngModel)]="editingStep.swipe_duration_ms" />
-                </div>
-              }
-
-              @if (editingStep.step_type === 'wait') {
-                <div class="form-group">
-                  <label>Wait Duration (ms)</label>
-                  <input type="number" [(ngModel)]="editingStep.wait_duration_ms" />
-                </div>
-              }
-
-              @if (editingStep.step_type === 'image_match' || editingStep.step_type === 'find_all_click') {
-                <div class="form-group">
-                  <label>Template</label>
-                  <select [(ngModel)]="editingStep.template_path">
-                    @for (t of templates(); track t.id) {
-                      <option [value]="t.file_path">{{ t.name }}</option>
-                    }
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label>Threshold</label>
-                  <input type="number" [(ngModel)]="editingStep.threshold" min="0" max="1" step="0.1" />
-                </div>
-                @if (editingStep.step_type === 'find_all_click') {
-                  <label class="checkbox-label">
-                    <input type="checkbox" [(ngModel)]="editingStep.match_all" />
-                    Click all matches
-                  </label>
-                }
-              }
-              
-              <!-- Group Assignment -->
-              <div class="form-group">
-                <label>🏷️ Group</label>
-                <div class="group-selector">
-                  <select [(ngModel)]="editingStep.group_name">
-                    <option [value]="undefined">-- No Group --</option>
-                    @for (group of availableGroups(); track group) {
-                      <option [value]="group">{{ group }}</option>
-                    }
-                  </select>
-                  <button class="btn btn-secondary btn-small" (click)="showGroupModal = true">➕</button>
-                </div>
+             <div class="input-group">
+              <label>GROUP</label>
+              <div class="flex-row">
+                 <select [(ngModel)]="editingStep.group_name" class="glass-input">
+                  <option [value]="undefined">-- None --</option>
+                  @for (group of availableGroups(); track group) {
+                    <option [value]="group">{{ group }}</option>
+                  }
+                </select>
+                <button class="glass-button small" (click)="showGroupModal = true">+</button>
               </div>
-
-              <div class="form-group">
-                <label>Description</label>
-                <input type="text" [(ngModel)]="editingStep.description" placeholder="Optional description..." />
-              </div>
-
-              <button class="btn btn-primary" (click)="applyStepEdit()">✅ Apply</button>
             </div>
-          }
-        </div>
-      </div>
 
-      <!-- Log Area -->
-      <div class="log-section card">
-        <h3>📋 Log</h3>
-        <div class="log-area">
+             <div class="input-group full-width">
+              <label>DESCRIPTION</label>
+              <input type="text" class="glass-input" [(ngModel)]="editingStep.description" />
+            </div>
+          </div>
+          
+          <div class="panel-footer">
+            <button class="glass-button primary" (click)="applyStepEdit()">UPDATE STEP</button>
+          </div>
+        </div>
+      }
+      
+      <!-- Log Panel -->
+      <div class="log-panel glass-panel">
+        <div class="log-content">
           @for (log of logs(); track log) {
-            <div class="log-line">{{ log }}</div>
+            <div class="log-entry">{{ log }}</div>
           }
         </div>
       </div>
 
-      <!-- Capture Template Modal -->
+       <!-- Capture Modal -->
       @if (showCaptureModal) {
-        <div class="modal-overlay" (click)="showCaptureModal = false">
-          <div class="modal-content" (click)="$event.stopPropagation()">
-            <h3>📷 Save Captured Region</h3>
-            <div class="form-group">
-              <label>Template Name</label>
-              <input type="text" [(ngModel)]="captureTemplateName" placeholder="e.g., checkbox, agree_button" />
-            </div>
-            <div class="captured-info">
-              Region: ({{ captureRegion.x }}, {{ captureRegion.y }}) - {{ captureRegion.width }}x{{ captureRegion.height }}
+        <div class="modal-backdrop">
+          <div class="modal-card glass-panel">
+            <h3>SAVE TEMPLATE</h3>
+            <div class="input-group">
+              <label>NAME</label>
+              <input type="text" class="glass-input" [(ngModel)]="captureTemplateName" placeholder="button_confirm" autofocus />
             </div>
             <div class="modal-actions">
-              <button class="btn btn-secondary" (click)="showCaptureModal = false">Cancel</button>
-              <button class="btn btn-primary" (click)="saveCapturedTemplate()">💾 Save Template</button>
+              <button class="glass-button" (click)="showCaptureModal = false">CANCEL</button>
+              <button class="glass-button primary" (click)="saveCapturedTemplate()">SAVE</button>
             </div>
           </div>
         </div>
       }
 
-      <!-- Group Creation Modal -->
+      <!-- Group Modal -->
       @if (showGroupModal) {
-        <div class="modal-overlay" (click)="showGroupModal = false">
-          <div class="modal-content" (click)="$event.stopPropagation()">
-            <h3>🏷️ Create New Group</h3>
-            <div class="form-group">
-              <label>Group Name</label>
-              <input 
-                type="text" 
-                [(ngModel)]="newGroupName" 
-                placeholder="e.g., re-id, before-re-id"
-                (keyup.enter)="createGroup()"
-              />
+        <div class="modal-backdrop">
+           <div class="modal-card glass-panel">
+            <h3>NEW GROUP</h3>
+            <div class="input-group">
+              <label>GROUP NAME</label>
+              <input type="text" class="glass-input" [(ngModel)]="newGroupName" (keyup.enter)="createGroup()" />
             </div>
-            <div class="modal-actions">
-              <button class="btn btn-secondary" (click)="showGroupModal = false">❌ Cancel</button>
-              <button class="btn btn-primary" (click)="createGroup()">✅ Create</button>
+             <div class="modal-actions">
+              <button class="glass-button" (click)="showGroupModal = false">CANCEL</button>
+              <button class="glass-button primary" (click)="createGroup()">CREATE</button>
             </div>
           </div>
         </div>
@@ -359,469 +314,355 @@ interface DeviceInfo {
   `,
   styles: [`
     .workflow-builder {
-      padding: 1rem;
+      padding-top: 2rem;
+      padding-bottom: 2rem;
       display: flex;
       flex-direction: column;
-      gap: 1rem;
-      height: calc(100vh - 60px);
-      overflow-y: auto;
+      gap: 1.5rem;
+      height: calc(100vh - 80px); /* Adjust based on header height */
     }
 
-    .header-section {
+    button { cursor: pointer; }
+
+    /* --- Header --- */
+    .builder-header {
+      padding: 1rem 1.75rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      flex-wrap: wrap;
-      gap: 1rem;
     }
 
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .button-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+    
     .page-title {
-      font-family: 'Orbitron', monospace;
-      font-size: 1.5rem;
-      background: linear-gradient(135deg, #00f5ff, #7c3aed);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      margin: 0;
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 1px;
     }
 
-    .header-actions {
+    /* --- Settings Row --- */
+    .settings-row {
+      padding: 1rem 1.75rem;
       display: flex;
-      gap: 0.5rem;
-      align-items: center;
+      gap: 2rem;
+      align-items: flex-end;
     }
 
-    .workflow-select {
-      padding: 0.5rem 1rem;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(0, 245, 255, 0.3);
-      border-radius: 8px;
-      color: white;
-      min-width: 200px;
-    }
-
-    .card {
-      background: #1a1a2e;
-      border: 1px solid rgba(0, 245, 255, 0.2);
-      border-radius: 12px;
-      padding: 1rem;
-    }
-
-    .workflow-info .info-row {
-      display: flex;
-      gap: 1rem;
-      flex-wrap: wrap;
-    }
-
-    .form-group {
-      display: flex;
-      flex-direction: column;
-      gap: 0.25rem;
-      flex: 1;
-      min-width: 150px;
-    }
-
-    .form-group label {
-      font-size: 0.75rem;
-      color: #94a3b8;
-    }
-
-    .form-group input, .form-group select {
-      padding: 0.5rem;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(0, 245, 255, 0.3);
-      border-radius: 6px;
-      color: white;
-    }
-
-    .form-row {
-      display: flex;
-      gap: 0.5rem;
-    }
-
-    .main-content {
-      display: grid;
-      grid-template-columns: 960px 1fr;
-      gap: 1rem;
-      flex: 1;
-      min-height: 0;
-    }
-
-    /* Screen Preview */
-    .preview-section {
+    .input-group {
       display: flex;
       flex-direction: column;
       gap: 0.5rem;
+      flex: 1;
     }
 
-    .preview-header {
+    .input-group.flex-2 { flex: 2; }
+    .input-group.full-width { grid-column: 1 / -1; }
+    .input-group-row { display: flex; gap: 1rem; }
+
+    .flex-row { display: flex; gap: 0.5rem; }
+
+    label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* --- Columns Layout --- */
+    .builder-columns {
+      display: flex;
+      gap: 1.5rem;
+      flex: 1;
+      min-height: 0; /* Enable scroll in children */
+    }
+
+    .canvas-column {
+      flex: 2; /* 66% width */
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .logic-column {
+      flex: 1; /* 33% width */
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      min-width: 350px;
+    }
+
+    /* --- Headers & Controls --- */
+    .panel-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .panel-header h3 {
+      font-size: 0.9rem;
+      margin: 0;
+      color: var(--primary);
+      letter-spacing: 0.5px;
+    }
+
+    .canvas-controls {
+      display: flex;
       gap: 1rem;
     }
 
-    .preview-header h3 {
-      margin: 0;
-      font-size: 1rem;
-      color: #94a3b8;
-    }
-
-    .mode-selector {
+    .mode-toggles {
       display: flex;
-      gap: 0.25rem;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--glass-border);
+      border-radius: 6px;
+      padding: 3px;
     }
 
-    .mode-btn {
-      padding: 0.4rem 0.75rem;
-      background: rgba(0, 0, 0, 0.3);
-      border: 1px solid rgba(0, 245, 255, 0.2);
-      border-radius: 6px;
-      color: #94a3b8;
-      cursor: pointer;
+    .mode-toggles button {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.4rem 0.8rem;
+      border-radius: 4px;
       transition: all 0.2s;
     }
 
-    .mode-btn.active {
-      background: rgba(0, 245, 255, 0.2);
-      border-color: #00f5ff;
-      color: #00f5ff;
+    .mode-toggles button.active {
+      background: var(--primary);
+      color: #000;
+      box-shadow: 0 0 10px var(--primary-dim);
+    }
+    
+    .icon-btn {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid var(--glass-border);
+      color: var(--text-main);
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s;
+      
+      &:hover {
+        background: rgba(255,255,255,0.1);
+        border-color: var(--text-muted);
+      }
+    }
+
+    /* --- Screen Canvas --- */
+    .screen-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 960px; /* Limit to native resolution size to avoid pixelation */
+      aspect-ratio: 16 / 9; /* Fixed Landscape Aspect Ratio */
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      overflow: hidden;
+      background: #000;
+      border: 4px solid #1a1b26; /* Emulator-like bezel */
+      border-radius: 4px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      margin: 0 auto; /* Center it */
     }
 
     .screen-container {
-      width: 960px;
-      height: 540px;
-      background: #0a0a0f;
-      border: 2px solid rgba(0, 245, 255, 0.3);
-      border-radius: 8px;
+      width: 100%;
+      height: 100%;
       position: relative;
       overflow: hidden;
-      cursor: crosshair;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #000;
     }
 
     .screen-image {
       width: 100%;
       height: 100%;
-      object-fit: contain;
+      object-fit: contain; /* Ensure no distortion */
+      image-rendering: high-quality;
+    }
+
+    /* Scanlines removed for clarity (LD Player style) */
+
+    .status-bar {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      padding: 2px 8px;
+      background: rgba(0,0,0,0.8);
+      display: flex;
+      justify-content: space-between;
+      font-family: 'Consolas', monospace;
+      font-size: 0.7rem;
+      color: #aaa;
+      z-index: 20;
+      pointer-events: none;
     }
 
     .overlay-canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
       pointer-events: none;
+      z-index: 15;
     }
 
     .no-screen {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100%;
-      color: #64748b;
-    }
-
-    .no-screen-icon {
-      font-size: 4rem;
-      opacity: 0.5;
-    }
-
-    .coords-display {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      color: #00f5ff;
-      padding: 0.25rem 0.5rem;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 4px;
-      align-self: flex-start;
-    }
-
-    .swipe-preview {
-      position: absolute;
-      pointer-events: none;
-    }
-
-    .swipe-line {
-      height: 3px;
-      background: linear-gradient(90deg, #00f5ff, #7c3aed);
-      transform-origin: left center;
-    }
-
-    /* Steps Section */
-    .steps-section {
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      max-height: 600px;
-    }
-
-    .steps-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    .steps-header h3 {
-      margin: 0;
-      font-size: 1rem;
-      color: #94a3b8;
-    }
-
-    .step-actions {
-      display: flex;
-      gap: 0.25rem;
-    }
-
-    .steps-list {
-      flex: 1;
-      overflow-y: auto;
-      display: flex;
-      flex-direction: column;
-      gap: 0.5rem;
-      padding: 0.5rem;
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 8px;
-      min-height: 200px;
-    }
-
-    .step-item {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem;
-      background: rgba(0, 245, 255, 0.05);
-      border: 1px solid rgba(0, 245, 255, 0.1);
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-
-    .step-item:hover {
-      border-color: rgba(0, 245, 255, 0.3);
-    }
-
-    .step-item.selected {
-      border-color: #00f5ff;
-      background: rgba(0, 245, 255, 0.1);
-    }
-
-    .step-item.cdk-drag-preview {
-      box-shadow: 0 4px 20px rgba(0, 245, 255, 0.3);
-    }
-
-    .step-drag-handle {
-      cursor: grab;
-      color: #64748b;
-      font-size: 1.2rem;
-    }
-
-    .step-index {
-      width: 24px;
-      height: 24px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: rgba(0, 245, 255, 0.2);
-      border-radius: 50%;
-      font-size: 0.75rem;
-      color: #00f5ff;
-    }
-
-    .step-icon {
-      font-size: 1.2rem;
-    }
-
-    .step-info {
-      flex: 1;
-      font-size: 0.85rem;
-      color: #e2e8f0;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    
-    .group-badge {
-      padding: 0.2rem 0.5rem;
-      border-radius: 12px;
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: #fff;
-      margin-right: 0.5rem;
-      opacity: 0.9;
-    }
-    
-    .group-selector {
-      display: flex;
-      gap: 0.5rem;
-      align-items: center;
-    }
-    
-    .group-selector select {
-      flex: 1;
-    }
-
-    .btn-icon {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1rem;
-      padding: 0.25rem;
-      opacity: 0.6;
-      transition: opacity 0.2s;
-    }
-
-    .btn-icon:hover {
-      opacity: 1;
-    }
-
-    .btn-icon.danger:hover {
-      filter: brightness(1.5);
-    }
-
-    .no-steps {
       text-align: center;
-      color: #64748b;
-      padding: 2rem;
+      color: var(--text-dim);
+      display: flex; flex-direction: column; align-items: center;
     }
 
-    /* Step Editor */
-    .step-editor {
-      margin-top: 0.5rem;
-    }
+    .no-screen-icon { font-size: 3rem; display: block; margin-bottom: 1rem; opacity: 0.3; }
 
-    .step-editor h4 {
-      margin: 0 0 0.75rem 0;
-      color: #00f5ff;
-    }
-
-    .checkbox-label {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      color: #e2e8f0;
-      cursor: pointer;
-    }
-
-    /* Buttons */
-    .btn {
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 8px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-    }
-
-    .btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #00f5ff, #0ea5e9);
-      color: #0a0a0f;
-    }
-
-    .btn-secondary {
-      background: rgba(0, 245, 255, 0.1);
-      border: 1px solid rgba(0, 245, 255, 0.3);
-      color: #00f5ff;
-    }
-
-    .btn-success {
-      background: linear-gradient(135deg, #10b981, #059669);
-      color: white;
-    }
-
-    .btn-warning {
-      background: linear-gradient(135deg, #f59e0b, #d97706);
-      color: white;
-    }
-
-    .btn-small {
-      padding: 0.3rem 0.6rem;
-      font-size: 0.8rem;
-    }
-
-    /* Log Section */
-    .log-section {
-      max-height: 150px;
-    }
-
-    .log-section h3 {
-      margin: 0 0 0.5rem 0;
-      font-size: 0.9rem;
-      color: #94a3b8;
-    }
-
-    .log-area {
-      max-height: 100px;
+    /* --- Steps List --- */
+    .steps-container {
+      flex: 1;
       overflow-y: auto;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.75rem;
-      color: #94a3b8;
+      padding: 0.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
     }
 
-    .log-line {
-      padding: 0.2rem 0;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-
-    /* Modal */
-    .modal-overlay {
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0, 0, 0, 0.8);
+    .step-card {
       display: flex;
       align-items: center;
-      justify-content: center;
-      z-index: 1000;
+      gap: 0.8rem;
+      padding: 0.8rem;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      transition: all 0.2s;
+      cursor: pointer;
     }
 
-    .modal-content {
-      background: #1a1a2e;
-      border: 1px solid rgba(0, 245, 255, 0.3);
-      border-radius: 12px;
-      padding: 1.5rem;
-      min-width: 400px;
+    .step-card:hover {
+      background: rgba(255,255,255,0.04);
+      border-color: var(--glass-border);
+      transform: translateX(4px);
     }
 
-    .modal-content h3 {
-      margin: 0 0 1rem 0;
-      color: #00f5ff;
+    .glass-button.warning {
+      background: rgba(251, 191, 36, 0.1);
+      color: var(--warning);
+      border-color: rgba(251, 191, 36, 0.3);
     }
 
-    .captured-info {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      color: #94a3b8;
-      padding: 0.5rem;
-      background: rgba(0, 0, 0, 0.3);
-      border-radius: 4px;
-      margin: 0.5rem 0;
+    .glass-button.danger-btn {
+      background: rgba(251, 113, 133, 0.1);
+      color: var(--danger);
+      border-color: rgba(251, 113, 133, 0.3);
+      
+      &:hover:not(:disabled) {
+        background: rgba(251, 113, 133, 0.2);
+        box-shadow: 0 0 15px rgba(251, 113, 133, 0.2);
+      }
+    }
+    .step-card.selected {
+      background: rgba(56, 189, 248, 0.05); /* Blue tint */
+      border-color: var(--primary);
+      box-shadow: inset 3px 0 0 var(--primary);
     }
 
-    .modal-actions {
+    .step-handle {
+      color: var(--text-dim);
+      cursor: grab;
+      padding: 0 0.5rem;
+    }
+
+    .step-content {
+      flex: 1;
+      overflow: hidden;
+    }
+
+    .step-top {
       display: flex;
+      align-items: center;
       gap: 0.5rem;
-      justify-content: flex-end;
-      margin-top: 1rem;
+      margin-bottom: 0.2rem;
     }
 
-    @media (max-width: 1200px) {
-      .main-content {
-        grid-template-columns: 1fr;
-      }
+    .step-number { font-family: 'Consolas', monospace; color: var(--text-muted); font-size: 0.8rem; }
+    .step-type { font-weight: 700; font-size: 0.75rem; color: var(--text-main); }
+    .step-desc { font-size: 0.85rem; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    
+    .group-tag { font-size: 0.6rem; padding: 1px 4px; border-radius: 4px; color: #fff; }
 
-      .screen-container {
-        width: 100%;
-        max-width: 960px;
-        height: auto;
-        aspect-ratio: 16/9;
-      }
+    .step-actions { opacity: 0; transition: opacity 0.2s; }
+    .step-card:hover .step-actions { opacity: 1; }
+
+    .action-btn {
+      background: none; border: none; padding: 0.2rem 0.4rem; color: var(--text-muted);
+      &:hover { color: var(--text-main); scale: 1.1; }
+      &.danger:hover { color: var(--danger); }
     }
+    
+    .empty-steps {
+      display: flex; align-items: center; justify-content: center; height: 100px;
+      color: var(--text-muted); font-style: italic; opacity: 0.7;
+      border: 1px dashed var(--glass-border); border-radius: 8px;
+    }
+
+    /* --- Properties Panel --- */
+    .properties-panel {
+      position: absolute;
+      bottom: 2rem; right: 2rem; left: 50%;
+      background: rgba(11, 16, 27, 0.95); /* Matches palette surface */
+      border-top: 1px solid var(--primary);
+      box-shadow: 0 -20px 50px rgba(0,0,0,0.6);
+      z-index: 100;
+      padding: 1.75rem;
+      animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+    
+    .close-btn {
+      background: transparent; border: none; font-size: 1.5rem; color: var(--text-muted);
+      &:hover { color: var(--danger); }
+    }
+
+    .props-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1.5rem;
+      margin: 1.5rem 0;
+    }
+
+    @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+    /* --- Log Panel --- */
+    .log-panel {
+      height: 120px;
+      overflow-y: auto;
+      font-family: 'Consolas', monospace;
+      font-size: 0.75rem;
+      padding: 0.75rem;
+      background: #000;
+      border-top: 1px solid var(--glass-border);
+    }
+    
+    .log-entry { margin-bottom: 2px; color: var(--text-muted); }
+
+    /* --- Modals --- */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000;
+      display: flex; align-items: center; justify-content: center;
+      backdrop-filter: blur(5px);
+    }
+    .modal-card { width: 450px; padding: 2rem; background: var(--bg-surface); }
+    .modal-card h3 { color: var(--primary); margin-bottom: 1.5rem; }
+    .modal-actions { margin-top: 1.5rem; display: flex; justify-content: flex-end; gap: 1rem; }
+
   `]
 })
 export class WorkflowBuilderComponent implements OnInit, OnDestroy {
@@ -1031,37 +872,125 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     }
   }
 
-  async refreshScreen(): Promise<void> {
-    if (!this.selectedDevice) return;
+  async deleteWorkflow(): Promise<void> {
+    if (!this.currentWorkflow.id) return;
+
+    // Confirm deletion
+    const workflowName = this.currentWorkflow.name;
+    const confirmed = confirm(`Are you sure you want to delete "${workflowName}"?\n\nThis action cannot be undone.`);
+    
+    if (!confirmed) return;
 
     try {
-      const response = await fetch(`/api/v1/devices/${this.selectedDevice}/screenshot`);
+      const response = await fetch(`/api/v1/workflows/${this.currentWorkflow.id}`, {
+        method: 'DELETE'
+      });
       const data = await response.json();
-      if (data.success && data.image) {
-        this.screenImage.set(data.image);
+      
+      if (data.success) {
+        this.addLog(`🗑️ Deleted: ${workflowName}`);
+        // Reset to new workflow
+        this.selectedWorkflowId = '';
+        await this.loadWorkflows();
+        await this.loadWorkflow();
+      } else {
+        this.addLog(`❌ Delete failed: ${data.message || 'Unknown error'}`);
       }
     } catch (error) {
-      // Silent fail
+      this.addLog(`❌ Delete error: ${error}`);
     }
+  }
+
+  async refreshScreen(): Promise<void> {
+    if (!this.selectedDevice) {
+      this.addLog('❌ No device selected');
+      return;
+    }
+
+    try {
+      this.addLog(`🔄 Refreshing screen for ${this.selectedDevice}...`);
+      const response = await fetch(`/api/v1/devices/${this.selectedDevice}/screenshot`);
+      const data = await response.json();
+      
+      if (data.success && data.image) {
+        this.screenImage.set(data.image);
+        this.addLog(`✅ Screen refreshed`);
+      } else {
+        this.addLog(`❌ Refresh failed: ${data.message || 'Unknown error'}`);
+      }
+    } catch (error) {
+      this.addLog(`❌ Refresh error: ${error}`);
+      console.error('Screen refresh error:', error);
+    }
+  }
+
+  // Helper method to get actual image position accounting for object-fit: contain
+  private getImageCoordinates(event: MouseEvent): { x: number; y: number } {
+    const container = this.screenContainer.nativeElement;
+    const containerRect = container.getBoundingClientRect();
+    
+    // Get the actual image element
+    const img = container.querySelector('.screen-image') as HTMLImageElement;
+    if (!img || !img.naturalWidth || !img.naturalHeight) {
+      // Fallback to old calculation if image not loaded
+      return {
+        x: Math.round((event.clientX - containerRect.left) * (this.currentWorkflow.screen_width / containerRect.width)),
+        y: Math.round((event.clientY - containerRect.top) * (this.currentWorkflow.screen_height / containerRect.height))
+      };
+    }
+
+    // Calculate the displayed image size (accounting for object-fit: contain)
+    const containerAspect = containerRect.width / containerRect.height;
+    const imageAspect = this.currentWorkflow.screen_width / this.currentWorkflow.screen_height;
+    
+    let displayedWidth: number;
+    let displayedHeight: number;
+    let offsetX: number;
+    let offsetY: number;
+
+    if (containerAspect > imageAspect) {
+      // Container is wider - image is limited by height
+      displayedHeight = containerRect.height;
+      displayedWidth = displayedHeight * imageAspect;
+      offsetX = (containerRect.width - displayedWidth) / 2;
+      offsetY = 0;
+    } else {
+      // Container is taller - image is limited by width
+      displayedWidth = containerRect.width;
+      displayedHeight = displayedWidth / imageAspect;
+      offsetX = 0;
+      offsetY = (containerRect.height - displayedHeight) / 2;
+    }
+
+    // Calculate click position relative to the actual image
+    const relativeX = event.clientX - containerRect.left - offsetX;
+    const relativeY = event.clientY - containerRect.top - offsetY;
+
+    // Clamp to image bounds
+    const clampedX = Math.max(0, Math.min(relativeX, displayedWidth));
+    const clampedY = Math.max(0, Math.min(relativeY, displayedHeight));
+
+    // Scale to actual coordinates
+    const x = Math.round(clampedX * (this.currentWorkflow.screen_width / displayedWidth));
+    const y = Math.round(clampedY * (this.currentWorkflow.screen_height / displayedHeight));
+
+    return { x, y };
   }
 
   // Mouse handlers for screen preview
   onMouseDown(event: MouseEvent): void {
-    const rect = this.screenContainer.nativeElement.getBoundingClientRect();
-    const x = Math.round((event.clientX - rect.left) * (this.currentWorkflow.screen_width / rect.width));
-    const y = Math.round((event.clientY - rect.top) * (this.currentWorkflow.screen_height / rect.height));
-
-    this.dragStart = { x, y };
+    const coords = this.getImageCoordinates(event);
+    this.dragStart = coords;
     this.isDragging = true;
   }
 
   onMouseMove(event: MouseEvent): void {
-    const rect = this.screenContainer.nativeElement.getBoundingClientRect();
-    this.mouseX = Math.round((event.clientX - rect.left) * (this.currentWorkflow.screen_width / rect.width));
-    this.mouseY = Math.round((event.clientY - rect.top) * (this.currentWorkflow.screen_height / rect.height));
+    const coords = this.getImageCoordinates(event);
+    this.mouseX = coords.x;
+    this.mouseY = coords.y;
 
     if (this.isDragging) {
-      this.dragEnd = { x: this.mouseX, y: this.mouseY };
+      this.dragEnd = coords;
       this.drawOverlay();
     } else if (this.currentMode === 'swipe_2point' && this.swipeFirstPoint) {
       this.drawOverlay();
@@ -1069,9 +998,9 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   }
 
   onMouseUp(event: MouseEvent): void {
-    const rect = this.screenContainer.nativeElement.getBoundingClientRect();
-    const clickX = Math.round((event.clientX - rect.left) * (this.currentWorkflow.screen_width / rect.width));
-    const clickY = Math.round((event.clientY - rect.top) * (this.currentWorkflow.screen_height / rect.height));
+    const coords = this.getImageCoordinates(event);
+    const clickX = coords.x;
+    const clickY = coords.y;
 
     // Handle 2-point swipe mode
     if (this.currentMode === 'swipe_2point') {
@@ -1080,7 +1009,8 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
         this.swipeFirstPoint = { x: clickX, y: clickY };
         this.drawOverlay();
         this.addLog(`👆 Swipe start: (${clickX}, ${clickY})`);
-        return;      } else {
+        return;
+      } else {
         // Second click - create swipe step
         this.addSwipeStep(this.swipeFirstPoint.x, this.swipeFirstPoint.y, clickX, clickY);
         this.swipePoints.push({

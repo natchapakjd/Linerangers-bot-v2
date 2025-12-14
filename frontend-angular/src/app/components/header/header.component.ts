@@ -9,225 +9,251 @@ import { AuthService } from '../../services/auth.service';
   standalone: true,
   imports: [CommonModule, RouterModule],
   template: `
-    <header class="header">
-      <div class="header-top">
-        <div class="logo">
-          <span class="logo-icon">🎮</span>
-          <h1>LINE RANGERS BOT</h1>
+    <header class="header-container glass-panel">
+      <!-- Top Bar: Logo & User -->
+      <div class="header-main">
+        <div class="logo-area">
+          <div class="logo-icon-wrap">
+            <span class="logo-icon">💠</span>
+            <div class="logo-glow"></div>
+          </div>
+          <div class="logo-text">
+            <h1>LRG<span class="highlight">BOT</span></h1>
+            <span class="logo-subtitle">AUTOMATION V2</span>
+          </div>
         </div>
-        <div class="auth-section">
+
+        <div class="header-actions">
           @if (authService.isLoggedIn()) {
-            <span class="user-info">
-              <span class="user-icon">👤</span>
-              <span class="username">{{ authService.currentUser()?.username }}</span>
-              @if (authService.isAdmin()) {
-                <span class="admin-badge">ADMIN</span>
-              }
-            </span>
-            <button class="auth-btn" (click)="logout()">🚪 Logout</button>
+            <div class="user-chip glass-button">
+              <span class="avatar-circle">
+                {{ authService.currentUser()?.username?.charAt(0) | uppercase }}
+              </span>
+              <span class="user-name">{{ authService.currentUser()?.username }}</span>
+              <button class="logout-icon" (click)="logout()" title="Logout">⏻</button>
+            </div>
           } @else {
-            <button class="auth-btn login-btn" (click)="goToLogin()">🔐 Login</button>
+            <button class="glass-button login-btn" (click)="goToLogin()">
+              <span class="icon">🔐</span> LOGIN
+            </button>
           }
         </div>
       </div>
       
-      <nav class="navbar">
-        <ul class="nav-menu">
-          <li class="nav-item" *ngFor="let item of filteredMenuItems()">
-            <a 
-              class="nav-link" 
-              [class.active]="activeMenu === item.id"
-              (click)="setActiveMenu(item.id)"
-            >
-              <span class="nav-icon">{{ item.icon }}</span>
-              <span class="nav-text">{{ item.label }}</span>
-              <span class="nav-badge" *ngIf="item.badge">{{ item.badge }}</span>
-            </a>
-          </li>
+      <!-- Navigation Bar -->
+      <nav class="nav-container">
+        <ul class="nav-list">
+          @for (item of filteredMenuItems(); track item.id) {
+            <li class="nav-item">
+              <a 
+                class="nav-link" 
+                [class.active]="activeMenu === item.id"
+                (click)="setActiveMenu(item.id)"
+              >
+                <span class="nav-icon">{{ item.icon }}</span>
+                <span class="nav-label">{{ item.label }}</span>
+                
+                @if (item.badge) {
+                  <span class="nav-badge">{{ item.badge }}</span>
+                }
+                <div class="hover-effect"></div>
+              </a>
+            </li>
+          }
         </ul>
       </nav>
     </header>
   `,
   styles: [`
-    .header {
-      background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%);
-      border-radius: 16px;
-      overflow: hidden;
-      box-shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
-      border: 1px solid rgba(59, 130, 246, 0.1);
+    :host {
+      display: block;
+      margin-bottom: 2rem;
     }
 
-    .header-top {
+    .header-container {
+      padding: 0;
+      overflow: visible;
+      /* Gradient glass background */
+      background: linear-gradient(180deg, rgba(8, 12, 22, 0.85) 0%, rgba(8, 12, 22, 0.6) 100%);
+      border-bottom: 1px solid var(--glass-border);
+      box-shadow: 0 4px 20px -5px rgba(0,0,0,0.3);
+    }
+
+    /* --- Top Bar --- */
+    .header-main {
+      padding: 0.75rem 2rem;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 1rem 1.5rem;
-      border-bottom: 1px solid rgba(59, 130, 246, 0.1);
-      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      border-bottom: 1px solid rgba(255,255,255,0.03);
     }
 
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 0.75rem;
-    }
-
-    .logo-icon {
-      font-size: 2rem;
-      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
-    }
-
-    .logo h1 {
-      font-family: 'Inter', 'Segoe UI', sans-serif;
-      font-size: 1.5rem;
-      font-weight: 800;
-      color: white;
-      letter-spacing: 1px;
-      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    }
-
-    .auth-section {
+    .logo-area {
       display: flex;
       align-items: center;
       gap: 1rem;
     }
 
-    .user-info {
+    .logo-icon-wrap {
+      position: relative;
+      width: 42px; 
+      height: 42px;
       display: flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.5rem 1rem;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 20px;
-      font-size: 0.875rem;
-      color: white;
+      justify-content: center;
     }
 
-    .user-icon {
-      font-size: 1.1rem;
+    .logo-icon {
+      font-size: 2rem;
+      position: relative;
+      z-index: 2;
+      /* Multi-color gradient icon drop shadow */
+      filter: drop-shadow(0 0 8px rgba(0, 198, 255, 0.5));
     }
 
-    .username {
-      color: white;
-      font-weight: 600;
+    .logo-glow {
+      position: absolute;
+      width: 100%; height: 100%;
+      background: var(--primary);
+      filter: blur(24px);
+      opacity: 0.2;
+      border-radius: 50%;
+      animation: pulseGlow 4s infinite alternate;
     }
 
-    .admin-badge {
-      background: #fbbf24;
-      color: #1e3a8a;
-      font-size: 0.65rem;
-      padding: 0.15rem 0.5rem;
-      border-radius: 10px;
-      font-weight: 700;
-    }
-
-    .auth-btn {
-      padding: 0.5rem 1rem;
-      border: none;
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.2);
-      color: white;
-      font-size: 0.85rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-    }
-
-    .auth-btn:hover {
-      background: rgba(255, 255, 255, 0.3);
-    }
-
-    .auth-btn.login-btn {
-      background: white;
-      color: #3b82f6;
-      border: none;
-    }
-
-    .auth-btn.login-btn:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-    }
-
-    /* === NAVBAR === */
-    .navbar {
-      padding: 0.75rem 1rem;
-      background: #f8fafc;
-    }
-
-    .nav-menu {
-      display: flex;
-      gap: 0.5rem;
-      list-style: none;
+    .logo-text h1 {
+      font-size: 1.6rem;
+      line-height: 1;
       margin: 0;
-      padding: 0;
+      letter-spacing: 1px;
+      background: linear-gradient(to right, #fff, var(--primary));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-text .highlight {
+      /* Keep standard hierarchy */
+    }
+
+    .logo-subtitle {
+      font-family: var(--font-body);
+      font-size: 0.7rem;
+      letter-spacing: 4px;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 2px;
+      opacity: 0.7;
+    }
+
+    /* --- User Actions --- */
+    .user-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.4rem 0.8rem 0.4rem 0.6rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--glass-border);
+      border-radius: 30px;
+      transition: all 0.3s;
+    }
+    
+    .user-chip:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255,255,255,0.1);
+    }
+
+    .avatar-circle {
+      width: 28px; height: 28px;
+      background: var(--grad-primary);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #fff;
+      box-shadow: 0 0 10px rgba(0, 198, 255, 0.3);
+    }
+
+    .user-name {
+      font-size: 0.9rem;
+      font-weight: 500;
+      color: var(--text-main);
+    }
+
+    .logout-icon {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 4px;
+      margin-left: 0.25rem;
+      transition: color 0.2s;
+      
+      &:hover {
+        color: var(--danger);
+      }
+    }
+
+    /* --- Navigation --- */
+    .nav-container {
+      padding: 0 2rem;
       overflow-x: auto;
+      background: rgba(0,0,0,0.2);
+      backdrop-filter: blur(5px);
+    }
+
+    .nav-list {
+      display: flex;
+      gap: 2rem;
+      list-style: none;
+      min-width: max-content;
     }
 
     .nav-item {
-      flex-shrink: 0;
-    }
-
-    .nav-link {
-      display: flex;
-      align-items: center;
-      gap: 0.5rem;
-      padding: 0.75rem 1.25rem;
-      border-radius: 12px;
-      background: transparent;
-      color: #64748b;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.9rem;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      border: 1px solid transparent;
       position: relative;
     }
 
-    .nav-link:hover {
-      color: #3b82f6;
-      background: rgba(59, 130, 246, 0.08);
-      border-color: rgba(59, 130, 246, 0.2);
-    }
-
-    .nav-link.active {
-      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
-      color: white;
-      border-color: transparent;
-      box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);
-    }
-
-    .nav-icon {
-      font-size: 1.2rem;
-    }
-
-    .nav-text {
+    .nav-link {
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 1rem 0;
+      color: var(--text-muted);
+      font-family: var(--font-body);
       font-size: 0.9rem;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.3s;
+      border-bottom: 2px solid transparent;
+    }
+
+    .nav-link:hover {
+      color: var(--text-main);
+    }
+
+    /* Active State: Underline + Glow */
+    .nav-link.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+    }
+    
+    .nav-link.active .nav-icon {
+      filter: drop-shadow(0 0 5px var(--primary));
     }
 
     .nav-badge {
-      background: linear-gradient(135deg, #10b981, #059669);
+      font-size: 0.6rem;
+      padding: 1px 5px;
+      background: var(--grad-secondary);
+      border-radius: 4px;
       color: white;
-      font-size: 0.65rem;
-      padding: 0.15rem 0.5rem;
-      border-radius: 10px;
       font-weight: 700;
-    }
-
-    /* Scrollbar for nav */
-    .nav-menu::-webkit-scrollbar {
-      height: 4px;
-    }
-
-    .nav-menu::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    .nav-menu::-webkit-scrollbar-thumb {
-      background: rgba(59, 130, 246, 0.3);
-      border-radius: 2px;
-      border-radius: 2px;
+      letter-spacing: 0.5px;
+      box-shadow: 0 0 8px rgba(161, 140, 209, 0.4);
     }
   `]
 })
