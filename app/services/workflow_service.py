@@ -181,21 +181,22 @@ class WorkflowService:
             condition_type=data.get("condition_type"),
             goto_step_on_true=data.get("goto_step_on_true"),
             goto_step_on_false=data.get("goto_step_on_false"),
-            description=data.get("description", "")
+            description=data.get("description", ""),
+            group_name=data.get("group_name")
         )
     
     # ==================== Workflow Execution ====================
     
     async def execute_workflow(self, workflow_id: int, device_serial: str) -> dict:
         """Execute a workflow on a device."""
-        from app.services.adb_service import ADBService
+        from app.services.adb_service import AdbService
         from app.services.template_service import TemplateService
         
         workflow_data = await self.get_workflow(workflow_id)
         if not workflow_data:
             return {"success": False, "message": "Workflow not found"}
         
-        adb = ADBService()
+        adb = AdbService()
         adb.device_address = device_serial
         template_service = TemplateService()
         
@@ -224,7 +225,7 @@ class WorkflowService:
                 
                 elif step_type == "image_match":
                     # Capture screen and find template
-                    screenshot = adb.capture_screen()
+                    screenshot = adb.screenshot()
                     if screenshot is None:
                         return {"success": False, "message": f"Failed to capture screen at step {step_index + 1}"}
                     
@@ -250,7 +251,7 @@ class WorkflowService:
                             await asyncio.sleep(0.3)
                 
                 elif step_type == "conditional":
-                    screenshot = adb.capture_screen()
+                    screenshot = adb.screenshot()
                     result = template_service.find_template(
                         screenshot,
                         step["template_path"],
@@ -285,14 +286,14 @@ class WorkflowService:
     
     async def capture_template(self, device_serial: str, region: dict, name: str) -> Optional[dict]:
         """Capture a region from screen as a template."""
-        from app.services.adb_service import ADBService
+        from app.services.adb_service import AdbService
         import cv2
         import numpy as np
         
-        adb = ADBService()
+        adb = AdbService()
         adb.device_address = device_serial
         
-        screenshot = adb.capture_screen()
+        screenshot = adb.screenshot()
         if screenshot is None:
             return None
         

@@ -13,7 +13,7 @@ import { BotService } from '../../services/bot.service';
       </div>
       <div class="screen-container">
         @if (botService.screenImage()) {
-          <img [src]="botService.screenImage()" class="screen-image" alt="Emulator Screen">
+          <img [src]="botService.screenImage()" class="screen-image" alt="Emulator Screen" draggable="false" (dragstart)="$event.preventDefault()">
         } @else {
           <div class="screen-placeholder">
             <span>No Signal</span>
@@ -80,6 +80,9 @@ import { BotService } from '../../services/bot.service';
       width: 100%;
       height: 100%;
       object-fit: contain;
+      user-select: none;
+      -webkit-user-drag: none;
+      pointer-events: auto;
     }
   `]
 })

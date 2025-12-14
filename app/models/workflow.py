@@ -88,6 +88,9 @@ class WorkflowStep(Base):
     # Description for UI
     description = Column(String(500), default="")
     
+    # Group organization (e.g., "re-id", "before-re-id")
+    group_name = Column(String(100), nullable=True, index=True)
+    
     # Relationship
     workflow = relationship("Workflow", back_populates="steps")
     
@@ -111,7 +114,8 @@ class WorkflowStep(Base):
             "condition_type": self.condition_type,
             "goto_step_on_true": self.goto_step_on_true,
             "goto_step_on_false": self.goto_step_on_false,
-            "description": self.description
+            "description": self.description,
+            "group_name": self.group_name
         }
 
 

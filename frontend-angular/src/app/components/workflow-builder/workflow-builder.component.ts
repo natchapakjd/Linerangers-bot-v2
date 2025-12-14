@@ -19,6 +19,7 @@ interface WorkflowStep {
   match_all?: boolean;
   on_match_action?: string;
   description?: string;
+  group_name?: string;
 }
 
 interface Workflow {
@@ -103,9 +104,17 @@ interface DeviceInfo {
               >👆 Swipe</button>
               <button 
                 class="mode-btn" 
+                [class.active]="currentMode === 'swipe_2point'"
+                (click)="currentMode = 'swipe_2point'; swipeFirstPoint = null"
+              >👆✌️ 2-Point</button>
+              <button 
+                class="mode-btn" 
                 [class.active]="currentMode === 'capture'"
                 (click)="currentMode = 'capture'"
               >📷 Capture</button>
+              @if (swipePoints.length > 0) {
+                <button class="btn btn-secondary btn-small" (click)="clearSwipeOverlay()">🗑️</button>
+              }
             </div>
             <button class="btn btn-secondary btn-small" (click)="refreshScreen()">🔄</button>
           </div>
@@ -180,6 +189,9 @@ interface DeviceInfo {
                 <div class="step-drag-handle" cdkDragHandle>⋮⋮</div>
                 <span class="step-index">{{ i + 1 }}</span>
                 <span class="step-icon">{{ getStepIcon(step) }}</span>
+                @if (step.group_name) {
+                  <span class="group-badge" [style.background-color]="getGroupColor(step.group_name)">{{ step.group_name }}</span>
+                }
                 <span class="step-info">{{ getStepDescription(step) }}</span>
                 <button class="btn-icon" (click)="editStep(i); $event.stopPropagation()">✏️</button>
                 <button class="btn-icon danger" (click)="deleteStep(i); $event.stopPropagation()">🗑️</button>
@@ -266,6 +278,20 @@ interface DeviceInfo {
                   </label>
                 }
               }
+              
+              <!-- Group Assignment -->
+              <div class="form-group">
+                <label>🏷️ Group</label>
+                <div class="group-selector">
+                  <select [(ngModel)]="editingStep.group_name">
+                    <option [value]="undefined">-- No Group --</option>
+                    @for (group of availableGroups(); track group) {
+                      <option [value]="group">{{ group }}</option>
+                    }
+                  </select>
+                  <button class="btn btn-secondary btn-small" (click)="showGroupModal = true">➕</button>
+                </div>
+              </div>
 
               <div class="form-group">
                 <label>Description</label>
@@ -303,6 +329,28 @@ interface DeviceInfo {
             <div class="modal-actions">
               <button class="btn btn-secondary" (click)="showCaptureModal = false">Cancel</button>
               <button class="btn btn-primary" (click)="saveCapturedTemplate()">💾 Save Template</button>
+            </div>
+          </div>
+        </div>
+      }
+
+      <!-- Group Creation Modal -->
+      @if (showGroupModal) {
+        <div class="modal-overlay" (click)="showGroupModal = false">
+          <div class="modal-content" (click)="$event.stopPropagation()">
+            <h3>🏷️ Create New Group</h3>
+            <div class="form-group">
+              <label>Group Name</label>
+              <input 
+                type="text" 
+                [(ngModel)]="newGroupName" 
+                placeholder="e.g., re-id, before-re-id"
+                (keyup.enter)="createGroup()"
+              />
+            </div>
+            <div class="modal-actions">
+              <button class="btn btn-secondary" (click)="showGroupModal = false">❌ Cancel</button>
+              <button class="btn btn-primary" (click)="createGroup()">✅ Create</button>
             </div>
           </div>
         </div>
@@ -590,6 +638,26 @@ interface DeviceInfo {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    
+    .group-badge {
+      padding: 0.2rem 0.5rem;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: #fff;
+      margin-right: 0.5rem;
+      opacity: 0.9;
+    }
+    
+    .group-selector {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    
+    .group-selector select {
+      flex: 1;
+    }
 
     .btn-icon {
       background: none;
@@ -785,10 +853,19 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   editingStep: WorkflowStep | null = null;
 
   // Drawing state
-  currentMode: 'click' | 'swipe' | 'capture' = 'click';
+  currentMode: 'click' | 'swipe' | 'swipe_2point' | 'capture' = 'click';
   isDragging = false;
   dragStart = { x: 0, y: 0 };
-  dragEnd = { x: 0, y: 0 };
+  dragEnd = { x: 0, y: 0 };  mousePos = { x: 0, y: 0 };
+  
+  // 2-point swipe mode
+  swipeFirstPoint: { x: number; y: number } | null = null;
+  swipePoints: Array<{ x: number; y: number; endX: number; endY: number }> = [];
+  
+  // Grouping
+  availableGroups = signal<string[]>([]);
+  showGroupModal = false;
+  newGroupName = '';
   mouseX = 0;
   mouseY = 0;
 
@@ -872,6 +949,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       const data = await response.json();
       if (data.success) {
         this.currentWorkflow = data.workflow;
+        this.updateAvailableGroups();
         this.addLog(`✅ Loaded: ${data.workflow.name}`);
       }
     } catch (error) {
@@ -985,31 +1063,55 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     if (this.isDragging) {
       this.dragEnd = { x: this.mouseX, y: this.mouseY };
       this.drawOverlay();
+    } else if (this.currentMode === 'swipe_2point' && this.swipeFirstPoint) {
+      this.drawOverlay();
     }
   }
 
   onMouseUp(event: MouseEvent): void {
+    const rect = this.screenContainer.nativeElement.getBoundingClientRect();
+    const clickX = Math.round((event.clientX - rect.left) * (this.currentWorkflow.screen_width / rect.width));
+    const clickY = Math.round((event.clientY - rect.top) * (this.currentWorkflow.screen_height / rect.height));
+
+    // Handle 2-point swipe mode
+    if (this.currentMode === 'swipe_2point') {
+      if (!this.swipeFirstPoint) {
+        // First click - store start point
+        this.swipeFirstPoint = { x: clickX, y: clickY };
+        this.drawOverlay();
+        this.addLog(`👆 Swipe start: (${clickX}, ${clickY})`);
+        return;      } else {
+        // Second click - create swipe step
+        this.addSwipeStep(this.swipeFirstPoint.x, this.swipeFirstPoint.y, clickX, clickY);
+        this.swipePoints.push({
+          x: this.swipeFirstPoint.x,
+          y: this.swipeFirstPoint.y,
+          endX: clickX,
+          endY: clickY
+        });
+        this.swipeFirstPoint = null;
+        this.drawOverlay();
+        return;
+      }
+    }
+
     if (!this.isDragging) return;
     this.isDragging = false;
 
-    const rect = this.screenContainer.nativeElement.getBoundingClientRect();
-    const endX = Math.round((event.clientX - rect.left) * (this.currentWorkflow.screen_width / rect.width));
-    const endY = Math.round((event.clientY - rect.top) * (this.currentWorkflow.screen_height / rect.height));
-
-    const distance = Math.sqrt(Math.pow(endX - this.dragStart.x, 2) + Math.pow(endY - this.dragStart.y, 2));
+    const distance = Math.sqrt(Math.pow(clickX - this.dragStart.x, 2) + Math.pow(clickY - this.dragStart.y, 2));
 
     if (this.currentMode === 'click' && distance < 10) {
       // Click
       this.addClickStep(this.dragStart.x, this.dragStart.y);
     } else if (this.currentMode === 'swipe' && distance >= 10) {
       // Swipe
-      this.addSwipeStep(this.dragStart.x, this.dragStart.y, endX, endY);
+      this.addSwipeStep(this.dragStart.x, this.dragStart.y, clickX, clickY);
     } else if (this.currentMode === 'capture' && distance >= 10) {
       // Capture region
-      const minX = Math.min(this.dragStart.x, endX);
-      const minY = Math.min(this.dragStart.y, endY);
-      const width = Math.abs(endX - this.dragStart.x);
-      const height = Math.abs(endY - this.dragStart.y);
+      const minX = Math.min(this.dragStart.x, clickX);
+      const minY = Math.min(this.dragStart.y, clickY);
+      const width = Math.abs(clickX - this.dragStart.x);
+      const height = Math.abs(clickY - this.dragStart.y);
       this.captureRegion = { x: minX, y: minY, width, height };
       this.showCaptureModal = true;
     }
@@ -1202,6 +1304,60 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       case 'conditional': return '❓';
       default: return '•';
     }
+  }
+  
+  clearSwipeOverlay(): void {
+    this.swipePoints = [];
+    this.drawOverlay();
+  }
+  
+  createGroup(): void {
+    if (!this.newGroupName.trim()) {
+      this.addLog('❌ Please enter a group name');
+      return;
+    }
+    
+    const groupName = this.newGroupName.trim();
+    const currentGroups = this.availableGroups();
+    
+    if (currentGroups.includes(groupName)) {
+      this.addLog('⚠️ Group already exists');
+      return;
+    }
+    
+    this.availableGroups.set([...currentGroups, groupName]);
+    
+    if (this.editingStep) {
+      this.editingStep.group_name = groupName;
+    }
+    
+    this.showGroupModal = false;
+    this.newGroupName = '';
+    this.addLog(`✅ Created group: ${groupName}`);
+  }
+  
+  updateAvailableGroups(): void {
+    const groups = new Set<string>();
+    this.currentWorkflow.steps.forEach(step => {
+      if (step.group_name) {
+        groups.add(step.group_name);
+      }
+    });
+    this.availableGroups.set(Array.from(groups).sort());
+  }
+  
+  getGroupColor(groupName: string): string {
+    let hash = 0;
+    for (let i = 0; i < groupName.length; i++) {
+      hash = groupName.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    
+    const colors = [
+      '#7c3aed', '#2563eb', '#059669', '#dc2626',
+      '#ea580c', '#4f46e5', '#0891b2', '#c026d3'
+    ];
+    
+    return colors[Math.abs(hash) % colors.length];
   }
 
   getStepDescription(step: WorkflowStep): string {
