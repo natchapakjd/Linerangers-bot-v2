@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 interface WorkflowStep {
   id?: number;
   order_index: number;
-  step_type: 'click' | 'swipe' | 'wait' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game';
+  step_type: 'click' | 'swipe' | 'wait' | 'wait_for_color' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game';
   x?: number;
   y?: number;
   end_x?: number;
@@ -31,6 +31,11 @@ interface WorkflowStep {
   not_found_threshold?: number;
   click_delay?: number;
   retry_delay?: number;
+  
+  // Wait for color properties
+  expected_color?: number[];  // [B, G, R]
+  tolerance?: number;
+  check_interval?: number;
 }
 
 interface Workflow {
@@ -137,6 +142,7 @@ interface DeviceInfo {
                 <button [class.active]="currentMode === 'swipe'" (click)="setMode('swipe')" title="Swipe Mode">👆</button>
                 <button [class.active]="currentMode === 'swipe_2point'" (click)="setMode('swipe_2point')" title="2-Point Swipe Mode">✌️</button>
                 <button [class.active]="currentMode === 'capture'" (click)="setMode('capture')" title="Capture Template (Drag Rectangle)">📷</button>
+                <button [class.active]="currentMode === 'color_picker'" (click)="setMode('color_picker')" title="Pick Color">🎨</button>
               </div>
               <div class="device-controls">
                 <button class="icon-btn" (click)="pressBack()" title="Press Back (Android)">⬅️</button>
@@ -194,6 +200,7 @@ interface DeviceInfo {
             <h3>SEQUENCE LOGIC ({{ currentWorkflow.steps.length }})</h3>
             <div class="add-buttons">
               <button class="glass-button x-small" (click)="addStep('wait')">+ WAIT</button>
+              <button class="glass-button x-small" (click)="addStep('wait_for_color')">🎨 COLOR</button>
               <button class="glass-button x-small" (click)="addStep('image_match')">+ IMAGE</button>
               <button class="glass-button x-small" (click)="addStep('loop_click')">🔁 LOOP</button>
               <button class="glass-button x-small" (click)="addStep('press_back')">⬅️ BACK</button>
@@ -278,6 +285,35 @@ interface DeviceInfo {
 
             @if (editingStep.step_type === 'wait') {
               <div class="input-group"><label>DURATION (MS)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.wait_duration_ms" /></div>
+            }
+            
+            @if (editingStep.step_type === 'wait_for_color') {
+              <div class="input-group-row">
+                <div class="input-group"><label>X</label><input type="number" class="glass-input" [(ngModel)]="editingStep.x" /></div>
+                <div class="input-group"><label>Y</label><input type="number" class="glass-input" [(ngModel)]="editingStep.y" /></div>
+              </div>
+              <div class="input-group">
+                <label>EXPECTED COLOR (RGB)</label>
+                <div class="color-inputs">
+                  <input type="number" class="glass-input small" 
+                    [ngModel]="editingStep.expected_color?.[2] || 255" 
+                    (ngModelChange)="updateColor(2, $event)" 
+                    placeholder="R" min="0" max="255" />
+                  <input type="number" class="glass-input small" 
+                    [ngModel]="editingStep.expected_color?.[1] || 255" 
+                    (ngModelChange)="updateColor(1, $event)" 
+                    placeholder="G" min="0" max="255" />
+                  <input type="number" class="glass-input small" 
+                    [ngModel]="editingStep.expected_color?.[0] || 255" 
+                    (ngModelChange)="updateColor(0, $event)" 
+                    placeholder="B" min="0" max="255" />
+                </div>
+              </div>
+              <div class="input-group-row">
+                <div class="input-group"><label>TOLERANCE</label><input type="number" class="glass-input" [(ngModel)]="editingStep.tolerance" placeholder="30" /></div>
+                <div class="input-group"><label>MAX WAIT(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_wait_seconds" placeholder="30" /></div>
+              </div>
+              <div class="input-group"><label>CHECK INTERVAL(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.check_interval" placeholder="1" step="0.5" /></div>
             }
 
 
@@ -783,7 +819,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   editingStep: WorkflowStep | null = null;
 
   // Drawing state
-  currentMode: 'click' | 'swipe' | 'swipe_2point' | 'capture' = 'click';
+  currentMode: 'click' | 'swipe' | 'swipe_2point' | 'capture' | 'color_picker' = 'click';
   isDragging = false;
   dragStart = { x: 0, y: 0 };
   dragEnd = { x: 0, y: 0 };  mousePos = { x: 0, y: 0 };
@@ -1224,7 +1260,10 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       clickPos: { x: clickX, y: clickY }
     });
 
-    if (this.currentMode === 'click' && distance < 10) {
+    if (this.currentMode === 'color_picker' && distance < 10) {
+      // Color picker - get color at position
+      this.pickColorAtPosition(this.dragStart.x, this.dragStart.y);
+    } else if (this.currentMode === 'click' && distance < 10) {
       // Click
       this.addClickStep(this.dragStart.x, this.dragStart.y);
     } else if (this.currentMode === 'swipe' && distance >= 10) {
@@ -1255,12 +1294,103 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   }
 
   // Helper to set mode with feedback
-  setMode(mode: 'click' | 'swipe' | 'swipe_2point' | 'capture'): void {
+  setMode(mode: 'click' | 'swipe' | 'swipe_2point' | 'capture' | 'color_picker'): void {
     this.currentMode = mode;
     if (mode === 'swipe_2point') {
       this.swipeFirstPoint = null;
     }
     this.addLog(`📡 Mode: ${mode.toUpperCase().replace('_', ' ')}`);
+  }
+  
+  // Pick color at position
+  async pickColorAtPosition(x: number, y: number): Promise<void> {
+    if (!this.selectedDevice) {
+      this.addLog('❌ No device selected');
+      return;
+    }
+
+    try {
+      // Get fresh screenshot
+      const response = await fetch(`/api/v1/devices/${this.selectedDevice}/screenshot`);
+      const data = await response.json();
+      
+      if (!data.success || !data.image) {
+        this.addLog('❌ Failed to get screenshot');
+        return;
+      }
+
+      // Create image to read pixel data
+      const img = new Image();
+      img.src = data.image;
+      
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+
+      // Create canvas to read pixel
+      const canvas = document.createElement('canvas');
+      canvas.width = this.currentWorkflow.screen_width;
+      canvas.height = this.currentWorkflow.screen_height;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) {
+        this.addLog('❌ Canvas error');
+        return;
+      }
+
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const imageData = ctx.getImageData(x, y, 1, 1);
+      const r = imageData.data[0];
+      const g = imageData.data[1];
+      const b = imageData.data[2];
+
+      this.addLog(`🎨 Color at (${x}, ${y}): RGB(${r}, ${g}, ${b})`);
+
+      // If editing a wait_for_color step, fill in the values
+      if (this.editingStep && this.editingStep.step_type === 'wait_for_color') {
+        this.editingStep.x = x;
+        this.editingStep.y = y;
+        this.editingStep.expected_color = [b, g, r];  // BGR format
+        this.addLog(`✅ Color set to step: RGB(${r}, ${g}, ${b})`);
+        
+        // Return to click mode
+        this.setMode('click');
+      } else {
+        // Show color in alert
+        await Swal.fire({
+          title: '🎨 Color Picked',
+          html: `
+            <p>Position: (${x}, ${y})</p>
+            <p style="font-size: 1.2rem; margin: 1rem 0;">
+              <strong>RGB(${r}, ${g}, ${b})</strong>
+            </p>
+            <div style="width: 100px; height: 100px; background: rgb(${r},${g},${b}); margin: 0 auto; border: 2px solid white; border-radius: 8px;"></div>
+          `,
+          icon: 'info',
+          confirmButtonText: 'OK',
+          background: 'rgba(11, 16, 27, 0.95)',
+          color: '#f8fafc'
+        });
+        
+        this.setMode('click');
+      }
+    } catch (error) {
+      this.addLog(`❌ Color picker error: ${error}`);
+      console.error('Color picker error:', error);
+    }
+  }
+  
+  // Helper to update color array values
+  updateColor(index: number, value: number): void {
+    if (!this.editingStep) return;
+    
+    // Initialize array if not exists
+    if (!this.editingStep.expected_color) {
+      this.editingStep.expected_color = [255, 255, 255];  // Default white [B, G, R]
+    }
+    
+    // Update specific index
+    this.editingStep.expected_color[index] = value;
   }
 
   // Prompt to save template with SweetAlert2
@@ -1534,11 +1664,25 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     const step: WorkflowStep = {
       order_index: this.currentWorkflow.steps.length,
       step_type: type as any,
-      description: type === 'wait' ? 'Wait 1000ms' : type === 'press_back' ? 'Press Back key' : type === 'start_game' ? 'Start game' : type === 'restart_game' ? 'Restart game' : type === 'loop_click' ? 'Loop click until not found' : 'Image match'
+      description: type === 'wait' ? 'Wait 1000ms' : 
+                   type === 'wait_for_color' ? 'Wait for color' :
+                   type === 'press_back' ? 'Press Back key' : 
+                   type === 'start_game' ? 'Start game' : 
+                   type === 'restart_game' ? 'Restart game' : 
+                   type === 'loop_click' ? 'Loop click until not found' : 
+                   'Image match'
     };
 
     if (type === 'wait') {
       step.wait_duration_ms = 1000;
+    } else if (type === 'wait_for_color') {
+      // Use center of screen based on workflow resolution
+      step.x = Math.floor(this.currentWorkflow.screen_width / 2);
+      step.y = Math.floor(this.currentWorkflow.screen_height / 2);
+      step.expected_color = [255, 255, 255];  // Default white [B, G, R]
+      step.tolerance = 30;
+      step.max_wait_seconds = 30;
+      step.check_interval = 1;
     } else if (type === 'image_match') {
       step.threshold = 0.8;
       step.match_all = false;
@@ -1601,6 +1745,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       case 'click': return '📍';
       case 'swipe': return '👆';
       case 'wait': return '⏱️';
+      case 'wait_for_color': return '🎨';
       case 'image_match': return '🖼️';
       case 'find_all_click': return '🔄';
       case 'loop_click': return '🔁';

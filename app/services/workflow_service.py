@@ -389,6 +389,62 @@ class WorkflowService:
                         print(f"[DEBUG] ⚠️ Reached max iterations ({max_iterations})")
                         print(f"[DEBUG] Total clicks: {total_clicks}")
                 
+                elif step_type == "wait_for_color":
+                    # Wait until color at position matches expected color
+                    x = step.get("x")
+                    y = step.get("y")
+                    expected_color = step.get("expected_color", [255, 255, 255])  # Default white [B, G, R]
+                    tolerance = step.get("tolerance", 30)  # Color difference tolerance
+                    max_wait = step.get("max_wait_seconds", 30)
+                    check_interval = step.get("check_interval", 1)  # Check every 1 second
+                    
+                    if x is None or y is None:
+                        return {"success": False, "message": f"wait_for_color step {step_index + 1} missing x or y"}
+                    
+                    print(f"[DEBUG] Wait for color at ({x}, {y}), expecting RGB({expected_color[2]},{expected_color[1]},{expected_color[0]}) ±{tolerance}")
+                    
+                    import time
+                    start_time = time.time()
+                    found = False
+                    
+                    while (time.time() - start_time) < max_wait:
+                        screenshot = adb.screenshot()
+                        if screenshot is None:
+                            await asyncio.sleep(1)
+                            continue
+                        
+                        # Check bounds
+                        h, w = screenshot.shape[:2]
+                        if y >= h or x >= w:
+                            print(f"[DEBUG] Position ({x},{y}) out of bounds ({w}x{h})")
+                            return {"success": False, "message": f"Position out of bounds at step {step_index + 1}"}
+                        
+                        # Get pixel color (BGR format)
+                        pixel = screenshot[y, x]
+                        
+                        # Calculate color difference
+                        diff = abs(int(pixel[0]) - expected_color[0]) + \
+                               abs(int(pixel[1]) - expected_color[1]) + \
+                               abs(int(pixel[2]) - expected_color[2])
+                        
+                        print(f"[DEBUG] Current color: RGB({pixel[2]},{pixel[1]},{pixel[0]}), diff: {diff}")
+                        
+                        if diff <= tolerance:
+                            print(f"[DEBUG] ✅ Color matched! (diff: {diff} ≤ {tolerance})")
+                            found = True
+                            break
+                        
+                        elapsed = time.time() - start_time
+                        remaining = int(max_wait - elapsed)
+                        if remaining % 5 == 0:  # Log every 5 seconds
+                            print(f"[DEBUG] Waiting for color... ({remaining}s remaining)")
+                        
+                        await asyncio.sleep(check_interval)
+                    
+                    if not found:
+                        print(f"[DEBUG] ❌ Color not matched after {max_wait}s")
+                        return {"success": False, "message": f"Color not matched at step {step_index + 1} after {max_wait}s"}
+                
                 elif step_type == "conditional":
                     screenshot = adb.screenshot()
                     result = template_service.find_template(

@@ -103,6 +103,17 @@ class WorkflowStep(Base):
     # Group organization (e.g., "re-id", "before-re-id")
     group_name = Column(String(100), nullable=True, index=True)
     
+    # Loop click options
+    max_iterations = Column(Integer, default=20)
+    not_found_threshold = Column(Integer, default=3)
+    click_delay = Column(Float, default=1.5)
+    retry_delay = Column(Float, default=2.0)
+    
+    # Wait for color options
+    expected_color = Column(JSON, nullable=True)  # [B, G, R]
+    tolerance = Column(Integer, default=30)
+    check_interval = Column(Float, default=1.0)
+    
     # Relationship
     workflow = relationship("Workflow", back_populates="steps")
     
@@ -131,7 +142,16 @@ class WorkflowStep(Base):
             "goto_step_on_true": self.goto_step_on_true,
             "goto_step_on_false": self.goto_step_on_false,
             "description": self.description,
-            "group_name": self.group_name
+            "group_name": self.group_name,
+            # Loop click options
+            "max_iterations": self.max_iterations,
+            "not_found_threshold": self.not_found_threshold,
+            "click_delay": self.click_delay,
+            "retry_delay": self.retry_delay,
+            # Wait for color options
+            "expected_color": self.expected_color,
+            "tolerance": self.tolerance,
+            "check_interval": self.check_interval
         }
 
 

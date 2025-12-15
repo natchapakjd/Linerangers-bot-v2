@@ -30,6 +30,24 @@ class StepModel(BaseModel):
     goto_step_on_true: Optional[int] = None
     goto_step_on_false: Optional[int] = None
     description: Optional[str] = ""
+    group_name: Optional[str] = None
+    
+    # Retry options (image_match, find_all_click)
+    skip_if_not_found: Optional[bool] = False
+    max_wait_seconds: Optional[int] = 10
+    max_retries: Optional[int] = None
+    retry_interval: Optional[float] = 1.0
+    
+    # Loop click options
+    max_iterations: Optional[int] = 20
+    not_found_threshold: Optional[int] = 3
+    click_delay: Optional[float] = 1.5
+    retry_delay: Optional[float] = 2.0
+    
+    # Wait for color options
+    expected_color: Optional[List[int]] = None  # [B, G, R]
+    tolerance: Optional[int] = 30
+    check_interval: Optional[float] = 1.0
 
 
 class WorkflowCreateRequest(BaseModel):
