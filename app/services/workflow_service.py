@@ -5,6 +5,7 @@ from typing import List, Optional
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 from datetime import datetime
+from pathlib import Path
 import asyncio
 import os
 
@@ -248,9 +249,11 @@ class WorkflowService:
                     found = False
                     
                     if max_retries:
-                        print(f"[DEBUG] Searching for template: {step.get('template_name', 'unknown')}, max {max_retries} retries, {retry_interval}s interval")
+                        template_name = Path(step.get("template_path", "unknown")).name if step.get("template_path") else "unknown"
+                        print(f"[DEBUG] Searching for template: {template_name}, max {max_retries} retries, {retry_interval}s interval")
                     else:
-                        print(f"[DEBUG] Searching for template: {step.get('template_name', 'unknown')}, max wait: {max_wait}s")
+                        template_name = Path(step.get("template_path", "unknown")).name if step.get("template_path") else "unknown"
+                        print(f"[DEBUG] Searching for template: {template_name}, max wait: {max_wait}s")
                     
                     while True:
                         # Check timeout
@@ -287,8 +290,8 @@ class WorkflowService:
                                 found = True
                                 break
                         else:
-                            # Find single match
-                            result = template_service.find_template(
+                            # Find single match - USE OPTIMIZED METHOD
+                            result = template_service.find_template_fast(
                                 screenshot,
                                 step["template_path"],
                                 step.get("threshold", 0.8)
