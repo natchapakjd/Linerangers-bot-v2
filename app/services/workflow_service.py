@@ -347,7 +347,7 @@ class WorkflowService:
                 
                 elif step_type == "start_game":
                     # Start Line Rangers (without force stop)
-                    package_name = "com.linecorp.LGBJM"
+                    package_name = "com.linecorp.LGRGS"
                     print(f"[DEBUG] Starting game: {package_name}")
                     result = adb.start_app(package_name)
                     print(f"[DEBUG] Start game result: {result}")
@@ -355,7 +355,7 @@ class WorkflowService:
                 
                 elif step_type == "restart_game":
                     # Restart Line Rangers
-                    package_name = "com.linecorp.LGBJM"
+                    package_name = "com.linecorp.LGRGS"
                     adb.force_stop_app(package_name)
                     await asyncio.sleep(1)
                     adb.start_app(package_name)

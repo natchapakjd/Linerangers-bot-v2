@@ -567,7 +567,7 @@ async def restart_game(serial: str):
         return CommandResponse(success=False, message=f"Device {serial} is {device.status.value}")
     
     # Line Rangers package name
-    package_name = "com.linecorp.LGBJM"
+    package_name = "com.linecorp.LGRGS"
     
     try:
         # Force stop the game

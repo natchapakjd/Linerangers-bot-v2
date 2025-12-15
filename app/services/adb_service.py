@@ -29,7 +29,8 @@ class AdbService:
             result = subprocess.run(
                 ["adb", "devices"],
                 capture_output=True,
-                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=10
             )
             
@@ -44,7 +45,8 @@ class AdbService:
                 result = subprocess.run(
                     ["adb", "connect", self.device_address],
                     capture_output=True,
-                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
                     timeout=10
                 )
                 if "connected" in result.stdout.lower():
@@ -142,7 +144,8 @@ class AdbService:
             result = subprocess.run(
                 ["adb", "-s", self.device_address, "shell", "wm", "size"],
                 capture_output=True,
-                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=5
             )
             # Parse "Physical size: 1080x1920"
@@ -161,7 +164,8 @@ class AdbService:
             result = subprocess.run(
                 ["adb", "-s", self.device_address, "push", local_path, remote_path],
                 capture_output=True,
-                text=True,
+                encoding='utf-8', 
+                errors='replace',
                 timeout=30
             )
             if result.returncode == 0:
@@ -187,7 +191,8 @@ class AdbService:
             result = subprocess.run(
                 ["adb", "-s", self.device_address, "shell", full_shell_cmd],
                 capture_output=True,
-                text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=30
             )
             success = result.returncode == 0
@@ -216,38 +221,114 @@ class AdbService:
             return False
     
     def start_app(self, package: str, activity: str = None) -> bool:
-        """Start an application."""
+        """Start an application with multiple fallback methods."""
         try:
+            # Method 1: If activity is specified, use am start directly
             if activity:
-                component = f"{package}/{activity}"
-                cmd = ["adb", "-s", self.device_address, "shell", "am", "start", "-n", component]
-            else:
-                # Use monkey to launch main activity
-                cmd = ["adb", "-s", self.device_address, "shell", "monkey", 
-                       "-p", package, "-c", "android.intent.category.LAUNCHER", "1"]
+                cmd = ["adb", "-s", self.device_address, "shell", "am", "start", "-n", f"{package}/{activity}"]
+                logger.debug(f"Method 1: Running command: {' '.join(cmd)}")
+                result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=10)
+                
+                if result.returncode == 0 and "Error" not in result.stdout:
+                    logger.info(f"Started (method 1): {package}")
+                    return True
+        
+            # Method 2: Try to find and launch main activity using pm dump
+            logger.debug(f"Method 2: Trying to find launcher activity...")
+            dump_cmd = ["adb", "-s", self.device_address, "shell", "pm", "dump", package]
+            # Use utf-8 with replace to avoid UnicodeDecodeError on Windows/Thai locale
+            dump_result = subprocess.run(dump_cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=15)
             
-            logger.debug(f"Running command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            detected_activity = None
+            if dump_result.returncode == 0 and dump_result.stdout:
+                # Parse for MAIN/LAUNCHER activity
+                lines = dump_result.stdout.split('\n')
+                for i, line in enumerate(lines):
+                    if 'android.intent.action.MAIN' in line:
+                        # Look at next few lines for activity
+                        for j in range(1, 10): # Check next 10 lines
+                            if i + j >= len(lines):
+                                break
+                            next_line = lines[i+j].strip()
+                            if package in next_line and '/' in next_line:
+                                # Extract component name: com.package/.Activity or .Activity
+                                import re
+                                match = re.search(f'({package}/[^ ]+)', next_line)
+                                if match:
+                                    detected_activity = match.group(1)
+                                    logger.debug(f"Found activity via dump: {detected_activity}")
+                                    break
+                                # Try simpler match if package name not repeated fully
+                                match = re.search(r' ([^ ]+/[^ ]+) ', next_line)
+                                if match and package in match.group(1):
+                                    detected_activity = match.group(1)
+                                    logger.debug(f"Found activity via dump (alt): {detected_activity}")
+                                    break
+                        if detected_activity:
+                            break
+            
+            if detected_activity:
+                cmd = ["adb", "-s", self.device_address, "shell", "am", "start", "-n", detected_activity]
+                result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=10)
+                if result.returncode == 0 and "Error" not in result.stdout:
+                    logger.info(f"Started (method 2 - detected): {package}")
+                    return True
+        
+            # Method 3: Use am start with implicit intent
+            logger.debug(f"Method 3: Using implicit intent...")
+            cmd = ["adb", "-s", self.device_address, "shell", "am", "start", 
+                   "-a", "android.intent.action.MAIN",
+                   "-c", "android.intent.category.LAUNCHER",
+                   "-n", f"{package}/.MainActivity"]
+            
+            result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=10)
+            if result.returncode == 0 and "Error" not in result.stdout:
+                logger.info(f"Started (method 3): {package}")
+                return True
+            
+            # Method 3.5: Implicit intent without activity inference (let system resolve)
+            logger.debug(f"Method 3.5: Implicit intent (package only)...")
+            cmd = ["adb", "-s", self.device_address, "shell", "am", "start", 
+                   "-a", "android.intent.action.MAIN",
+                   "-c", "android.intent.category.LAUNCHER", 
+                   package]
+            result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=10)
+            if result.returncode == 0 and "Error" not in result.stdout:
+                 logger.info(f"Started (method 3.5): {package}")
+                 return True
+
+            # Method 4: Use monkey (with category)
+            logger.debug(f"Method 4: Using monkey with category...")
+            cmd = ["adb", "-s", self.device_address, "shell", "monkey", 
+                   "-p", package, 
+                   "-c", "android.intent.category.LAUNCHER", 
+                   "1"]
+            
+            result = subprocess.run(cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=10)
             
             # Log output for debugging
             if result.stdout:
-                logger.debug(f"Start app stdout: {result.stdout}")
+                logger.debug(f"Monkey stdout: {result.stdout}")
             if result.stderr:
-                logger.warning(f"Start app stderr: {result.stderr}")
+                logger.warning(f"Monkey stderr: {result.stderr}")
             
-            # Check if monkey command was successful
-            if result.returncode != 0:
-                logger.error(f"Start app failed with return code: {result.returncode}")
-                return False
+            # Monkey might fail but app could still launch
+            # Check if app is now in foreground
+            check_cmd = ["adb", "-s", self.device_address, "shell", "dumpsys", "window", "windows"]
+            check_result = subprocess.run(check_cmd, capture_output=True, encoding='utf-8', errors='replace', timeout=5)
             
-            # For monkey, check if events were injected (success message contains "Events injected: 1")
-            if "monkey" in cmd and "Events injected: 1" not in result.stdout:
-                logger.warning(f"Monkey command may not have launched app properly: {result.stdout}")
+            if package in check_result.stdout:
+                logger.info(f"Started (monkey): {package}")
+                return True
             
-            logger.info(f"Started: {package}")
-            return True
+            # All methods failed
+            logger.error(f"All methods failed to start: {package}")
+            return False
+            
         except Exception as e:
             logger.error(f"Start app error: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
             return False
     
     def copy_file_with_root(self, source: str, dest: str) -> bool:
@@ -262,4 +343,3 @@ class AdbService:
             owner = stat_output.strip() if stat_output.strip() else "system:system"
             self.shell_su(f"chown {owner} '{dest}'")
         return success
-
