@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 interface WorkflowStep {
   id?: number;
   order_index: number;
-  step_type: 'click' | 'swipe' | 'wait' | 'image_match' | 'find_all_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game';
+  step_type: 'click' | 'swipe' | 'wait' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game';
   x?: number;
   y?: number;
   end_x?: number;
@@ -25,6 +25,12 @@ interface WorkflowStep {
   on_match_action?: string;
   description?: string;
   group_name?: string;
+  
+  // Loop click properties
+  max_iterations?: number;
+  not_found_threshold?: number;
+  click_delay?: number;
+  retry_delay?: number;
 }
 
 interface Workflow {
@@ -189,6 +195,7 @@ interface DeviceInfo {
             <div class="add-buttons">
               <button class="glass-button x-small" (click)="addStep('wait')">+ WAIT</button>
               <button class="glass-button x-small" (click)="addStep('image_match')">+ IMAGE</button>
+              <button class="glass-button x-small" (click)="addStep('loop_click')">🔁 LOOP</button>
               <button class="glass-button x-small" (click)="addStep('press_back')">⬅️ BACK</button>
               <button class="glass-button x-small" (click)="addStep('start_game')">▶️ START</button>
               <button class="glass-button x-small" (click)="addStep('restart_game')">🔄 RESTART</button>
@@ -249,6 +256,7 @@ interface DeviceInfo {
                 <option value="wait">Wait</option>
                 <option value="image_match">Image Match</option>
                 <option value="find_all_click">Find All & Click</option>
+                <option value="loop_click">Loop Click</option>
               </select>
             </div>
 
@@ -272,7 +280,8 @@ interface DeviceInfo {
               <div class="input-group"><label>DURATION (MS)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.wait_duration_ms" /></div>
             }
 
-            @if (['image_match', 'find_all_click'].includes(editingStep.step_type)) {
+
+            @if (['image_match', 'find_all_click', 'loop_click'].includes(editingStep.step_type)) {
                <div class="input-group">
                 <label>TEMPLATE</label>
                 <select [(ngModel)]="editingStep.template_path" class="glass-input">
@@ -283,16 +292,28 @@ interface DeviceInfo {
               </div>
               <div class="input-group"><label>THRESHOLD</label><input type="number" class="glass-input" [(ngModel)]="editingStep.threshold" step="0.05" /></div>
               
-              <!-- Retry Options -->
-              <div class="input-group-row">
-                <div class="input-group"><label>MAX WAIT(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_wait_seconds" placeholder="10" /></div>
-                <div class="input-group"><label>MAX RETRIES</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_retries" placeholder="∞" /></div>
-              </div>
-              <div class="input-group"><label>RETRY INTERVAL(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.retry_interval" placeholder="1" step="0.5" /></div>
-              <label class="checkbox-label">
-                <input type="checkbox" [(ngModel)]="editingStep.skip_if_not_found">
-                <span>Skip if not found</span>
-              </label>
+              @if (editingStep.step_type === 'loop_click') {
+                <!-- Loop Click Specific Options -->
+                <div class="input-group-row">
+                  <div class="input-group"><label>MAX ITERATIONS</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_iterations" placeholder="20" /></div>
+                  <div class="input-group"><label>NOT FOUND LIMIT</label><input type="number" class="glass-input" [(ngModel)]="editingStep.not_found_threshold" placeholder="3" /></div>
+                </div>
+                <div class="input-group-row">
+                  <div class="input-group"><label>CLICK DELAY(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.click_delay" step="0.1" placeholder="1.5" /></div>
+                  <div class="input-group"><label>RETRY DELAY(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.retry_delay" step="0.1" placeholder="2" /></div>
+                </div>
+              } @else {
+                <!-- Image Match / Find All Click Options -->
+                <div class="input-group-row">
+                  <div class="input-group"><label>MAX WAIT(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_wait_seconds" placeholder="10" /></div>
+                  <div class="input-group"><label>MAX RETRIES</label><input type="number" class="glass-input" [(ngModel)]="editingStep.max_retries" placeholder="∞" /></div>
+                </div>
+                <div class="input-group"><label>RETRY INTERVAL(s)</label><input type="number" class="glass-input" [(ngModel)]="editingStep.retry_interval" placeholder="1" step="0.5" /></div>
+                <label class="checkbox-label">
+                  <input type="checkbox" [(ngModel)]="editingStep.skip_if_not_found">
+                  <span>Skip if not found</span>
+                </label>
+              }
             }
 
              <div class="input-group">
@@ -1513,7 +1534,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     const step: WorkflowStep = {
       order_index: this.currentWorkflow.steps.length,
       step_type: type as any,
-      description: type === 'wait' ? 'Wait 1000ms' : type === 'press_back' ? 'Press Back key' : type === 'start_game' ? 'Start game' : type === 'restart_game' ? 'Restart game' : 'Image match'
+      description: type === 'wait' ? 'Wait 1000ms' : type === 'press_back' ? 'Press Back key' : type === 'start_game' ? 'Start game' : type === 'restart_game' ? 'Restart game' : type === 'loop_click' ? 'Loop click until not found' : 'Image match'
     };
 
     if (type === 'wait') {
@@ -1521,6 +1542,12 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     } else if (type === 'image_match') {
       step.threshold = 0.8;
       step.match_all = false;
+    } else if (type === 'loop_click') {
+      step.threshold = 0.8;
+      step.max_iterations = 20;
+      step.not_found_threshold = 3;
+      step.click_delay = 1.5;
+      step.retry_delay = 2;
     }
 
 
@@ -1576,6 +1603,7 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       case 'wait': return '⏱️';
       case 'image_match': return '🖼️';
       case 'find_all_click': return '🔄';
+      case 'loop_click': return '🔁';
       case 'conditional': return '❓';
       case 'press_back': return '⬅️';
       case 'start_game': return '▶️';

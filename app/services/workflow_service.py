@@ -327,6 +327,68 @@ class WorkflowService:
                         else:
                             print(f"[DEBUG] Skipping step (skip_if_not_found=True)")
                 
+                elif step_type == "loop_click":
+                    # Loop click: Keep finding and clicking until template not found
+                    # Similar to daily-login auto claim
+                    template_path = step.get("template_path")
+                    if not template_path:
+                        return {"success": False, "message": f"loop_click step {step_index + 1} missing template_path"}
+                    
+                    max_iterations = step.get("max_iterations", 20)  # Safety limit
+                    not_found_threshold = step.get("not_found_threshold", 3)  # Stop after N consecutive not found
+                    click_delay = step.get("click_delay", 1.5)  # Delay after each click
+                    retry_delay = step.get("retry_delay", 2)  # Delay when not found
+                    threshold = step.get("threshold", 0.8)
+                    
+                    template_name = Path(template_path).name
+                    print(f"[DEBUG] Loop click: {template_name}, max {max_iterations} iterations")
+                    
+                    iteration = 0
+                    not_found_count = 0
+                    total_clicks = 0
+                    
+                    while iteration < max_iterations:
+                        iteration += 1
+                        print(f"[DEBUG] Loop iteration #{iteration}...")
+                        
+                        # Take screenshot
+                        screenshot = adb.screenshot()
+                        if screenshot is None:
+                            print(f"[DEBUG] Screenshot failed, retrying...")
+                            await asyncio.sleep(1)
+                            continue
+                        
+                        # Find template
+                        result = template_service.find_template_fast(
+                            screenshot,
+                            template_path,
+                            threshold
+                        )
+                        
+                        if result:
+                            # Found! Click it
+                            print(f"[DEBUG] ✓ Found at ({result[0]}, {result[1]}), clicking... (click #{total_clicks + 1})")
+                            adb.tap(result[0], result[1])
+                            total_clicks += 1
+                            not_found_count = 0  # Reset counter
+                            await asyncio.sleep(click_delay)
+                        else:
+                            # Not found
+                            not_found_count += 1
+                            print(f"[DEBUG] ✗ Not found ({not_found_count}/{not_found_threshold})")
+                            
+                            # Check if we should stop
+                            if not_found_count >= not_found_threshold:
+                                print(f"[DEBUG] ✅ Template not found {not_found_threshold} times, loop complete!")
+                                print(f"[DEBUG] Total clicks: {total_clicks}")
+                                break
+                            
+                            await asyncio.sleep(retry_delay)
+                    
+                    if iteration >= max_iterations:
+                        print(f"[DEBUG] ⚠️ Reached max iterations ({max_iterations})")
+                        print(f"[DEBUG] Total clicks: {total_clicks}")
+                
                 elif step_type == "conditional":
                     screenshot = adb.screenshot()
                     result = template_service.find_template(
