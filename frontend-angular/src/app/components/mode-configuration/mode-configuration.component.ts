@@ -1,24 +1,25 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClient } from '@angular/common/http';
+import Swal from 'sweetalert2';
 
-interface TemplateSet {
+interface Workflow {
   id: number;
   name: string;
-  category: string;
   description: string;
+  mode_name?: string;
+  month_year?: string;
+  is_master: boolean;
+  steps: any[];
 }
 
-interface ModeConfiguration {
-  id: number;
+interface ModeConfig {
   mode_name: string;
-  month_year: string;
-  template_set_id: number;
-  template_set_name: string;
-  is_active: boolean;
-  priority: number;
-  created_at: string;
+  label: string;
+  description: string;
+  icon: string;
+  workflow_id?: number;
+  workflow_name?: string;
 }
 
 @Component({
@@ -29,34 +30,27 @@ interface ModeConfiguration {
   styleUrls: ['./mode-configuration.component.scss']
 })
 export class ModeConfigurationComponent implements OnInit {
-  configurations: ModeConfiguration[] = [];
-  templateSets: TemplateSet[] = [];
+  // All available workflows
+  workflows = signal<Workflow[]>([]);
   
-  showCreateForm = false;
-  newConfig = {
-    mode_name: 'daily-login',
-    month_year: this.getCurrentMonthYear(),
-    template_set_id: 0,
-    is_active: true,
-    priority: 0
-  };
-  
-  modes = [
-    { value: 'daily-login', label: 'Daily Login' },
-    { value: 'stage-farm', label: 'Stage Farm' },
-    { value: 'pvp', label: 'PVP Battle' },
-    { value: 'gacha', label: 'Gacha Pull' },
-    { value: 'event', label: 'Event' },
-    { value: 'custom', label: 'Custom' }
+  // Mode configurations
+  modes: ModeConfig[] = [
+    { mode_name: 'daily-login', label: 'Daily Login', description: 'สแกนไฟล์ XML → รันเกม → Claim rewards → ปิดเกม', icon: '📅' },
+    { mode_name: 'stage-farm', label: 'Stage Farm', description: 'ฟาร์มด่านอัตโนมัติ', icon: '⚔️' },
+    { mode_name: 'gai-ruby', label: 'Gai Ruby', description: 'เก็บรูบี้อัตโนมัติ', icon: '💎' },
+    { mode_name: 'event', label: 'Event', description: 'กิจกรรมพิเศษ', icon: '🎉' },
+    { mode_name: 'custom', label: 'Custom', description: 'กำหนดเอง', icon: '🔧' }
   ];
   
-  filterMode: string = '';
-
-  constructor(private http: HttpClient) {}
+  // Current month/year
+  currentMonthYear = this.getCurrentMonthYear();
+  
+  // Loading state
+  isLoading = signal(false);
 
   ngOnInit() {
-    this.loadConfigurations();
-    this.loadTemplateSets();
+    this.loadWorkflows();
+    this.loadModeConfigurations();
   }
 
   getCurrentMonthYear(): string {
@@ -84,112 +78,126 @@ export class ModeConfigurationComponent implements OnInit {
   formatMonthYear(monthYear: string): string {
     const [year, month] = monthYear.split('-');
     const date = new Date(parseInt(year), parseInt(month) - 1);
-    return date.toLocaleDateString('en-US', { year: 'numeric', month: 'long' });
+    return date.toLocaleDateString('th-TH', { year: 'numeric', month: 'long' });
   }
 
-  loadConfigurations() {
-    const url = this.filterMode 
-      ? `/api/v1/mode-configs?mode_name=${this.filterMode}`
-      : '/api/v1/mode-configs';
+  async loadWorkflows(): Promise<void> {
+    try {
+      const response = await fetch('/api/v1/workflows');
+      const result = await response.json();
+      
+      if (result.success) {
+        this.workflows.set(result.workflows);
+      }
+    } catch (error) {
+      console.error('Failed to load workflows:', error);
+    }
+  }
+
+  async loadModeConfigurations(): Promise<void> {
+    this.isLoading.set(true);
     
-    this.http.get<any>(url).subscribe({
-      next: (response) => {
-        if (response.success) {
-          this.configurations = response.configurations;
+    try {
+      // Load workflow for each mode
+      for (const mode of this.modes) {
+        const response = await fetch(`/api/v1/workflows/mode/${mode.mode_name}?month_year=${this.currentMonthYear}`);
+        const result = await response.json();
+        
+        if (result.success && result.workflow) {
+          mode.workflow_id = result.workflow.id;
+          mode.workflow_name = result.workflow.name;
+        } else {
+          mode.workflow_id = undefined;
+          mode.workflow_name = undefined;
         }
-      },
-      error: (error) => {
-        console.error('Failed to load configurations:', error);
       }
-    });
+    } catch (error) {
+      console.error('Failed to load mode configurations:', error);
+    } finally {
+      this.isLoading.set(false);
+    }
   }
 
-  loadTemplateSets() {
-    this.http.get<any>('/api/v1/template-sets').subscribe({
-      next: (response) => {
-        if (response.success) {
-          this.templateSets = response.template_sets;
-        }
-      },
-      error: (error) => {
-        console.error('Failed to load template sets:', error);
+  async assignWorkflowToMode(mode: ModeConfig, workflowId: number | undefined): Promise<void> {
+    if (!workflowId) {
+      // Clear the assignment by setting mode_name to null on the workflow
+      if (mode.workflow_id) {
+        await this.updateWorkflowMode(mode.workflow_id, null, null);
       }
-    });
-  }
-
-  createConfiguration() {
-    if (!this.newConfig.template_set_id || !this.newConfig.mode_name || !this.newConfig.month_year) {
-      alert('Please fill in all required fields');
+      mode.workflow_id = undefined;
+      mode.workflow_name = undefined;
       return;
     }
-
-    this.http.post<any>('/api/v1/mode-configs', this.newConfig).subscribe({
-      next: (response) => {
-        if (response.success) {
-          this.loadConfigurations();
-          this.resetForm();
-          this.showCreateForm = false;
-          alert('Configuration created successfully!');
-        }
-      },
-      error: (error) => {
-        console.error('Failed to create configuration:', error);
-        alert('Failed to create configuration');
+    
+    try {
+      // Update the selected workflow to have this mode_name and month_year
+      const response = await fetch(`/api/v1/workflows/${workflowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode_name: mode.mode_name,
+          month_year: this.currentMonthYear
+        })
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        const workflow = this.workflows().find(w => w.id === workflowId);
+        mode.workflow_id = workflowId;
+        mode.workflow_name = workflow?.name || 'Unknown';
+        
+        await Swal.fire({
+          icon: 'success',
+          title: 'บันทึกสำเร็จ',
+          text: `กำหนด ${workflow?.name} ให้กับโหมด ${mode.label}`,
+          timer: 2000,
+          showConfirmButton: false
+        });
+        
+        // Reload to ensure consistency
+        await this.loadWorkflows();
+      } else {
+        throw new Error(result.message || 'Failed to assign workflow');
       }
-    });
-  }
-
-  toggleActive(config: ModeConfiguration) {
-    const updateData = {
-      is_active: !config.is_active
-    };
-
-    this.http.put<any>(`/api/v1/mode-configs/${config.id}`, updateData).subscribe({
-      next: (response) => {
-        if (response.success) {
-          this.loadConfigurations();
-        }
-      },
-      error: (error) => {
-        console.error('Failed to update configuration:', error);
-        alert('Failed to update configuration');
-      }
-    });
-  }
-
-  deleteConfiguration(configId: number) {
-    if (confirm('Are you sure you want to delete this configuration?')) {
-      this.http.delete<any>(`/api/v1/mode-configs/${configId}`).subscribe({
-        next: (response) => {
-          if (response.success) {
-            this.loadConfigurations();
-            alert('Configuration deleted successfully!');
-          }
-        },
-        error: (error) => {
-          console.error('Failed to delete configuration:', error);
-          alert('Failed to delete configuration');
-        }
+    } catch (error) {
+      console.error('Failed to assign workflow:', error);
+      await Swal.fire({
+        icon: 'error',
+        title: 'เกิดข้อผิดพลาด',
+        text: 'ไม่สามารถบันทึกการตั้งค่าได้'
       });
     }
   }
 
-  resetForm() {
-    this.newConfig = {
-      mode_name: 'daily-login',
-      month_year: this.getCurrentMonthYear(),
-      template_set_id: 0,
-      is_active: true,
-      priority: 0
-    };
+  private async updateWorkflowMode(workflowId: number, modeName: string | null, monthYear: string | null): Promise<void> {
+    await fetch(`/api/v1/workflows/${workflowId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        mode_name: modeName,
+        month_year: monthYear
+      })
+    });
   }
 
-  onFilterChange() {
-    this.loadConfigurations();
+  getWorkflowsForSelection(): Workflow[] {
+    // Return all workflows
+    return this.workflows();
   }
 
-  getTemplateSetName(setId: number): string {
-    const set = this.templateSets.find(s => s.id === setId);
-    return set ? set.name : 'Unknown';
+  getStepsSummary(workflow: Workflow | undefined): string {
+    if (!workflow || !workflow.steps) return '';
+    const stepCount = workflow.steps.length;
+    return `${stepCount} step${stepCount !== 1 ? 's' : ''}`;
+  }
+
+  async onMonthChange(): Promise<void> {
+    await this.loadModeConfigurations();
+  }
+
+  getWorkflowById(id: number | undefined): Workflow | undefined {
+    if (!id) return undefined;
+    return this.workflows().find(w => w.id === id);
   }
 }

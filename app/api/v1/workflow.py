@@ -113,6 +113,24 @@ async def get_master_workflow():
     return {"success": False, "message": "No master workflow set", "workflow": None}
 
 
+@router.get("/mode/{mode_name}")
+async def get_workflow_for_mode(mode_name: str, month_year: Optional[str] = None):
+    """Get the workflow assigned to a specific mode and month."""
+    service = get_workflow_service()
+    workflow = await service.get_workflow_for_mode(mode_name, month_year)
+    if workflow:
+        return {"success": True, "workflow": workflow}
+    return {"success": False, "message": f"No workflow found for mode '{mode_name}'", "workflow": None}
+
+
+@router.get("/mode/{mode_name}/all")
+async def list_workflows_for_mode(mode_name: str):
+    """Get all workflows assigned to a specific mode."""
+    service = get_workflow_service()
+    workflows = await service.list_workflows_for_mode(mode_name)
+    return {"success": True, "workflows": workflows}
+
+
 @router.get("/templates")
 async def list_templates():
     """Get all image templates."""

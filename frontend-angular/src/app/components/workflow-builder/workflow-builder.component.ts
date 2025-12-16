@@ -158,6 +158,7 @@ interface DeviceInfo {
               @if (currentMode === 'swipe') { <span>👆 SWIPE MODE: Drag to swipe</span> }
               @if (currentMode === 'swipe_2point') { <span>✌️ 2-POINT SWIPE: Click start, then end</span> }
               @if (currentMode === 'capture') { <span>📷 CAPTURE MODE: Drag rectangle over target area</span> }
+              @if (currentMode === 'color_picker') { <span>🎨 COLOR PICKER: Click to get RGB value</span> }
             </div>
           }
           
@@ -261,6 +262,7 @@ interface DeviceInfo {
                 <option value="click">Click</option>
                 <option value="swipe">Swipe</option>
                 <option value="wait">Wait</option>
+                <option value="wait_for_color">Wait for Color</option>
                 <option value="image_match">Image Match</option>
                 <option value="find_all_click">Find All & Click</option>
                 <option value="loop_click">Loop Click</option>

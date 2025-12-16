@@ -4,6 +4,7 @@ API Endpoints - HTTP routes for bot control.
 from fastapi import APIRouter
 from app.schemas.status import CommandResponse, BotStatus
 from app.core import BotLifecycle
+from loguru import logger
 
 router = APIRouter(prefix="/api/v1", tags=["Bot Control"])
 
@@ -291,10 +292,16 @@ async def assign_device_task(serial: str, task: str):
     )
 
 
+class StartWithWorkflowRequest(BaseModel):
+    workflow_id: int = None
+    mode_name: str = None
+
+
 @router.post("/devices/{serial}/daily-login/start", response_model=CommandResponse)
-async def start_daily_login_on_device(serial: str):
-    """Start daily login on a specific device."""
+async def start_daily_login_on_device(serial: str, request: StartWithWorkflowRequest = None):
+    """Start daily login on a specific device with optional workflow."""
     from app.services.daily_login_service import DailyLoginService
+    from app.services.workflow_service import get_workflow_service
     
     manager = get_device_manager()
     device = manager.get_device(serial)
@@ -318,13 +325,40 @@ async def start_daily_login_on_device(serial: str):
     if not service.status.accounts:
         return CommandResponse(success=False, message="No accounts scanned. Scan folder first.")
     
+    # Load workflow if specified
+    workflow_service = get_workflow_service()
+    logger.info(f"Loading workflow for daily-login on {serial}...")
+    
+    if request and request.workflow_id:
+        # Use specific workflow by ID
+        workflow = await workflow_service.get_workflow(request.workflow_id)
+        if workflow and workflow.get("steps"):
+            service.workflow_id = request.workflow_id
+            service.workflow_steps = workflow["steps"]
+    elif request and request.mode_name:
+        # Use workflow from mode configuration
+        workflow = await workflow_service.get_workflow_for_mode(request.mode_name)
+        if workflow and workflow.get("steps"):
+            service.workflow_id = workflow["id"]
+            service.workflow_steps = workflow["steps"]
+    else:
+        # Try to get workflow for daily-login mode automatically
+        logger.info("No specific workflow requested, looking for mode='daily-login'...")
+        workflow = await workflow_service.get_workflow_for_mode("daily-login")
+        logger.info(f"Found workflow: {workflow.get('name') if workflow else None}, steps: {len(workflow.get('steps', [])) if workflow else 0}")
+        if workflow and workflow.get("steps"):
+            service.workflow_id = workflow["id"]
+            service.workflow_steps = workflow["steps"]
+            logger.info(f"Loaded workflow #{service.workflow_id} with {len(service.workflow_steps)} steps")
+    
     success = service.start()
     if success:
         manager.set_running(serial, True)
     
+    workflow_msg = f" with workflow #{service.workflow_id}" if service.workflow_id else ""
     return CommandResponse(
         success=success,
-        message=f"Daily login started on {serial}" if success else service.status.message
+        message=f"Daily login started on {serial}{workflow_msg}" if success else service.status.message
     )
 
 

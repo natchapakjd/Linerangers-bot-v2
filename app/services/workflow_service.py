@@ -49,6 +49,55 @@ class WorkflowService:
             workflow = result.scalar_one_or_none()
             return workflow.to_dict() if workflow else None
     
+    async def get_workflow_for_mode(self, mode_name: str, month_year: Optional[str] = None) -> Optional[dict]:
+        """Get the workflow assigned to a specific mode and month.
+        
+        Args:
+            mode_name: The game mode name (e.g., 'daily-login', 'stage-farm')
+            month_year: Optional month/year in format 'YYYY-MM'. If not provided, uses current month.
+        
+        Returns:
+            Workflow dict if found, None otherwise
+        """
+        from datetime import datetime
+        
+        if month_year is None:
+            month_year = datetime.now().strftime("%Y-%m")
+        
+        async with async_session_maker() as session:
+            # First try to find exact match for mode + month
+            result = await session.execute(
+                select(Workflow).options(selectinload(Workflow.steps))
+                .where(Workflow.mode_name == mode_name)
+                .where(Workflow.month_year == month_year)
+                .order_by(Workflow.is_master.desc())  # Prefer master workflows
+            )
+            workflow = result.scalar_one_or_none()
+            
+            if workflow:
+                return workflow.to_dict()
+            
+            # If no exact match, try to find any workflow for this mode
+            result = await session.execute(
+                select(Workflow).options(selectinload(Workflow.steps))
+                .where(Workflow.mode_name == mode_name)
+                .order_by(Workflow.is_master.desc(), Workflow.updated_at.desc())
+            )
+            workflow = result.scalar_one_or_none()
+            
+            return workflow.to_dict() if workflow else None
+    
+    async def list_workflows_for_mode(self, mode_name: str) -> List[dict]:
+        """Get all workflows assigned to a specific mode."""
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(Workflow).options(selectinload(Workflow.steps))
+                .where(Workflow.mode_name == mode_name)
+                .order_by(Workflow.month_year.desc(), Workflow.is_master.desc())
+            )
+            workflows = result.scalars().all()
+            return [w.to_dict() for w in workflows]
+    
     async def create_workflow(self, data: dict) -> dict:
         """Create a new workflow."""
         async with async_session_maker() as session:
@@ -189,7 +238,21 @@ class WorkflowService:
             goto_step_on_true=data.get("goto_step_on_true"),
             goto_step_on_false=data.get("goto_step_on_false"),
             description=data.get("description", ""),
-            group_name=data.get("group_name")
+            group_name=data.get("group_name"),
+            # Retry options
+            skip_if_not_found=data.get("skip_if_not_found", False),
+            max_wait_seconds=data.get("max_wait_seconds", 10),
+            max_retries=data.get("max_retries"),
+            retry_interval=data.get("retry_interval", 1.0),
+            # Loop click options  
+            max_iterations=data.get("max_iterations", 20),
+            not_found_threshold=data.get("not_found_threshold", 3),
+            click_delay=data.get("click_delay", 1.5),
+            retry_delay=data.get("retry_delay", 2.0),
+            # Wait for color options
+            expected_color=data.get("expected_color"),
+            tolerance=data.get("tolerance", 30),
+            check_interval=data.get("check_interval", 1.0)
         )
     
     # ==================== Workflow Execution ====================

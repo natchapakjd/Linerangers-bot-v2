@@ -64,6 +64,10 @@ class DailyLoginService:
         # Feature toggles
         self.auto_claim_enabled = True  # Enable auto claim by default
         
+        # Workflow configuration - if set, run this workflow instead of auto_claim
+        self.workflow_id: Optional[int] = None
+        self.workflow_steps: List[dict] = []
+        
         # Configurable delays
         self.delay_after_push = 2.0  # seconds after pushing XML
         self.delay_for_game_load = 60.0  # max seconds to wait for game to load
@@ -241,8 +245,13 @@ class DailyLoginService:
         if not self._wait_for_game_ready():
             self._emit_log(f"  ⚠️ Game load timeout, continuing anyway...")
         
-        # Step 7: Auto claim rewards if enabled
-        if self.auto_claim_enabled:
+        # Step 7: Run workflow or auto claim
+        if self.workflow_steps:
+            self._emit_log(f"  🔄 Running workflow ({len(self.workflow_steps)} steps)...")
+            success = self._execute_workflow_steps()
+            if not success:
+                self._emit_log(f"  ⚠️ Workflow execution failed")
+        elif self.auto_claim_enabled:
             self._claim_daily_rewards()
         else:
             # Just wait a fixed time if auto claim is disabled
@@ -288,6 +297,163 @@ class DailyLoginService:
                 self._emit_log(f"  ⏳ Waiting for game... ({remaining}s remaining)")
             
             self._wait(self.template_check_interval)
+        
+        return False
+    
+    def _execute_workflow_steps(self) -> bool:
+        """Execute workflow steps from self.workflow_steps."""
+        if not self.workflow_steps:
+            self._emit_log(f"  ⚠️ No workflow steps to execute")
+            return False
+        
+        step_index = 0
+        while step_index < len(self.workflow_steps) and not self._stop_event.is_set():
+            step = self.workflow_steps[step_index]
+            step_type = step.get("step_type", "")
+            
+            self._emit_log(f"  📍 Step {step_index + 1}/{len(self.workflow_steps)}: {step_type}")
+            
+            try:
+                if step_type == "click":
+                    self.adb.tap(step.get("x", 0), step.get("y", 0))
+                    self._wait(0.3)
+                
+                elif step_type == "swipe":
+                    self.adb.swipe(
+                        step.get("x", 0), step.get("y", 0),
+                        step.get("end_x", 0), step.get("end_y", 0),
+                        step.get("swipe_duration_ms", 300)
+                    )
+                    self._wait(0.5)
+                
+                elif step_type == "wait":
+                    wait_ms = step.get("wait_duration_ms", 1000)
+                    self._wait(wait_ms / 1000)
+                
+                elif step_type in ["image_match", "find_all_click"]:
+                    success = self._execute_image_step(step, step_type == "find_all_click")
+                    if not success and not step.get("skip_if_not_found", False):
+                        self._emit_log(f"  ❌ Image not found: {step.get('template_name', 'unknown')}")
+                        return False
+                
+                elif step_type == "loop_click":
+                    self._execute_loop_click_step(step)
+                
+                elif step_type == "wait_for_color":
+                    success = self._execute_wait_for_color_step(step)
+                    if not success:
+                        self._emit_log(f"  ❌ Color not matched at ({step.get('x')}, {step.get('y')})")
+                        return False
+                
+                elif step_type == "press_back":
+                    self.adb.press_key("KEYCODE_BACK")
+                    self._wait(0.5)
+                
+                step_index += 1
+                
+            except Exception as e:
+                self._emit_log(f"  ❌ Error at step {step_index + 1}: {str(e)}")
+                logger.error(f"Workflow step error: {e}")
+                return False
+        
+        self._emit_log(f"  ✅ Workflow completed successfully")
+        return True
+    
+    def _execute_image_step(self, step: dict, find_all: bool = False) -> bool:
+        """Execute an image matching step with retry logic."""
+        template_path = step.get("template_path", "")
+        threshold = step.get("threshold", 0.8)
+        max_wait = step.get("max_wait_seconds", 10)
+        retry_interval = step.get("retry_interval", 1)
+        
+        start_time = time.time()
+        
+        while (time.time() - start_time) < max_wait and not self._stop_event.is_set():
+            screen = self.adb.screenshot()
+            if screen is None:
+                self._wait(retry_interval)
+                continue
+            
+            if find_all:
+                matches = self.template_service.find_all_templates(screen, template_path, threshold, max_matches=50)
+                if matches:
+                    for match in matches:
+                        self.adb.tap(match[0], match[1])
+                        self._wait(0.3)
+                    return True
+            else:
+                result = self.template_service.find_template_fast(screen, template_path, threshold)
+                if result:
+                    self.adb.tap(result[0], result[1])
+                    self._wait(0.3)
+                    return True
+            
+            self._wait(retry_interval)
+        
+        return False
+    
+    def _execute_loop_click_step(self, step: dict):
+        """Execute a loop click step - keep clicking until template not found."""
+        template_path = step.get("template_path", "")
+        threshold = step.get("threshold", 0.8)
+        max_iterations = step.get("max_iterations", 20)
+        not_found_threshold = step.get("not_found_threshold", 3)
+        click_delay = step.get("click_delay", 1.5)
+        retry_delay = step.get("retry_delay", 2)
+        
+        iteration = 0
+        not_found_count = 0
+        
+        while iteration < max_iterations and not self._stop_event.is_set():
+            iteration += 1
+            screen = self.adb.screenshot()
+            if screen is None:
+                self._wait(1)
+                continue
+            
+            result = self.template_service.find_template_fast(screen, template_path, threshold)
+            
+            if result:
+                self.adb.tap(result[0], result[1])
+                not_found_count = 0
+                self._wait(click_delay)
+            else:
+                not_found_count += 1
+                if not_found_count >= not_found_threshold:
+                    self._emit_log(f"  ✅ Loop complete ({iteration} iterations)")
+                    break
+                self._wait(retry_delay)
+    
+    def _execute_wait_for_color_step(self, step: dict) -> bool:
+        """Wait until color at position matches expected color."""
+        x = step.get("x", 0)
+        y = step.get("y", 0)
+        expected_color = step.get("expected_color", [255, 255, 255])
+        tolerance = step.get("tolerance", 30)
+        max_wait = step.get("max_wait_seconds", 30)
+        check_interval = step.get("check_interval", 1)
+        
+        start_time = time.time()
+        
+        while (time.time() - start_time) < max_wait and not self._stop_event.is_set():
+            screen = self.adb.screenshot()
+            if screen is None:
+                self._wait(check_interval)
+                continue
+            
+            h, w = screen.shape[:2]
+            if y >= h or x >= w:
+                return False
+            
+            pixel = screen[y, x]
+            diff = abs(int(pixel[0]) - expected_color[0]) + \
+                   abs(int(pixel[1]) - expected_color[1]) + \
+                   abs(int(pixel[2]) - expected_color[2])
+            
+            if diff <= tolerance:
+                return True
+            
+            self._wait(check_interval)
         
         return False
     
