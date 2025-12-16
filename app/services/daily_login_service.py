@@ -259,8 +259,9 @@ class DailyLoginService:
             self._wait(self.delay_for_game_load)
         
         # Step 8: Force stop after daily login is done
-        self._emit_log(f"  ✅ Daily login complete, closing game...")
-        self._wait(2)
+        self._emit_log(f"  ✅ Daily login complete, waiting before closing game...")
+        self._wait(5)  # Wait 5 seconds for any pending actions to complete
+        self._emit_log(f"  ⏹️ Closing game...")
         self.adb.force_stop_app(LINERANGERS_PACKAGE)
         
         return True
@@ -312,9 +313,15 @@ class DailyLoginService:
             step_type = step.get("step_type", "")
             
             self._emit_log(f"  📍 Step {step_index + 1}/{len(self.workflow_steps)}: {step_type}")
+            logger.info(f"Step {step_index + 1}: {step}")  # Log full step data
             
             try:
-                if step_type == "click":
+                if step_type == "start_game":
+                    # Start game step - the game is already started by _process_account
+                    # This step is a marker, just log and continue
+                    self._emit_log(f"    ✅ Game already started (handled by process_account)")
+                    
+                elif step_type == "click":
                     self.adb.tap(step.get("x", 0), step.get("y", 0))
                     self._wait(0.3)
                 
@@ -340,14 +347,22 @@ class DailyLoginService:
                     self._execute_loop_click_step(step)
                 
                 elif step_type == "wait_for_color":
-                    success = self._execute_wait_for_color_step(step)
-                    if not success:
-                        self._emit_log(f"  ❌ Color not matched at ({step.get('x')}, {step.get('y')})")
-                        return False
+                    # Skip if expected_color is not set
+                    expected = step.get("expected_color")
+                    if not expected:
+                        self._emit_log(f"    ⚠️ No expected_color set, skipping wait_for_color")
+                    else:
+                        success = self._execute_wait_for_color_step(step)
+                        if not success:
+                            self._emit_log(f"  ❌ Color not matched at ({step.get('x')}, {step.get('y')})")
+                            return False
                 
                 elif step_type == "press_back":
                     self.adb.press_key("KEYCODE_BACK")
                     self._wait(0.5)
+                
+                else:
+                    self._emit_log(f"    ⚠️ Unknown step type: {step_type}, skipping...")
                 
                 step_index += 1
                 
@@ -366,30 +381,40 @@ class DailyLoginService:
         max_wait = step.get("max_wait_seconds", 10)
         retry_interval = step.get("retry_interval", 1)
         
+        self._emit_log(f"    🔍 Looking for: {step.get('template_name', template_path)} (threshold={threshold}, find_all={find_all})")
+        
         start_time = time.time()
         
         while (time.time() - start_time) < max_wait and not self._stop_event.is_set():
             screen = self.adb.screenshot()
             if screen is None:
+                self._emit_log(f"    ⚠️ Screenshot failed, retrying...")
                 self._wait(retry_interval)
                 continue
             
             if find_all:
                 matches = self.template_service.find_all_templates(screen, template_path, threshold, max_matches=50)
+                self._emit_log(f"    📊 Found {len(matches)} matches for find_all_click")
                 if matches:
-                    for match in matches:
+                    for i, match in enumerate(matches):
+                        self._emit_log(f"    👆 Clicking match {i+1} at ({match[0]}, {match[1]})")
                         self.adb.tap(match[0], match[1])
-                        self._wait(0.3)
+                        self._wait(0.5)  # Slightly longer delay between clicks
+                    # Wait for all popup animations to finish
+                    self._emit_log(f"    ⏳ Waiting for animations to settle...")
+                    self._wait(2.0)
                     return True
             else:
                 result = self.template_service.find_template_fast(screen, template_path, threshold)
                 if result:
+                    self._emit_log(f"    ✅ Found at ({result[0]}, {result[1]})")
                     self.adb.tap(result[0], result[1])
                     self._wait(0.3)
                     return True
             
             self._wait(retry_interval)
         
+        self._emit_log(f"    ❌ Not found after {max_wait}s of waiting")
         return False
     
     def _execute_loop_click_step(self, step: dict):
@@ -428,7 +453,9 @@ class DailyLoginService:
         """Wait until color at position matches expected color."""
         x = step.get("x", 0)
         y = step.get("y", 0)
-        expected_color = step.get("expected_color", [255, 255, 255])
+        expected_color = step.get("expected_color")
+        if expected_color is None:
+            expected_color = [255, 255, 255]  # Default to white
         tolerance = step.get("tolerance", 30)
         max_wait = step.get("max_wait_seconds", 30)
         check_interval = step.get("check_interval", 1)

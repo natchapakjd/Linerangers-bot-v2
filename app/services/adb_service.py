@@ -80,12 +80,16 @@ class AdbService:
     def tap(self, x: int, y: int) -> bool:
         """Tap at the specified coordinates."""
         try:
-            subprocess.run(
+            logger.info(f"Tapping at ({x}, {y}) on device {self.device_address}")
+            result = subprocess.run(
                 ["adb", "-s", self.device_address, "shell", "input", "tap", str(x), str(y)],
                 capture_output=True,
                 timeout=5
             )
-            logger.debug(f"Tapped at ({x}, {y})")
+            if result.returncode != 0:
+                logger.error(f"Tap failed: {result.stderr.decode()}")
+                return False
+            logger.info(f"Tap successful at ({x}, {y})")
             return True
         except Exception as e:
             logger.error(f"Tap error: {e}")

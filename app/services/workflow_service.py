@@ -456,7 +456,9 @@ class WorkflowService:
                     # Wait until color at position matches expected color
                     x = step.get("x")
                     y = step.get("y")
-                    expected_color = step.get("expected_color", [255, 255, 255])  # Default white [B, G, R]
+                    expected_color = step.get("expected_color")
+                    if expected_color is None:
+                        expected_color = [255, 255, 255]  # Default white [B, G, R]
                     tolerance = step.get("tolerance", 30)  # Color difference tolerance
                     max_wait = step.get("max_wait_seconds", 30)
                     check_interval = step.get("check_interval", 1)  # Check every 1 second
