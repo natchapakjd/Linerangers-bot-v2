@@ -175,8 +175,14 @@ class MultiDeviceOrchestrator:
         self._emit_log(f"📂 Loaded {count} accounts into shared queue")
         return count
     
-    def start(self, device_serials: List[str]) -> bool:
-        """Start parallel processing on multiple devices."""
+    def start(self, device_serials: List[str], resume: bool = False) -> bool:
+        """
+        Start parallel processing on multiple devices.
+        
+        Args:
+            device_serials: List of ADB device serials to use
+            resume: If True, continue from where stopped instead of resetting
+        """
         if self._state == MultiDeviceState.RUNNING:
             logger.warning("Multi-device processing already running")
             return False
@@ -189,8 +195,17 @@ class MultiDeviceOrchestrator:
             logger.error("No devices specified")
             return False
         
-        # Reset queue for fresh run
-        self.queue.reset()
+        # Reset queue only if not resuming
+        if resume:
+            remaining = self.queue.remaining_count
+            if remaining == 0:
+                logger.info("All accounts already processed, resetting for new run...")
+                self.queue.reset()
+            else:
+                self._emit_log(f"▶️ Resuming from account #{self.queue.processed_count + 1} ({remaining} remaining)")
+        else:
+            self.queue.reset()
+        
         self._stop_event.clear()
         self._state = MultiDeviceState.RUNNING
         self._devices = {}

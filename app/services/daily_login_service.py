@@ -215,16 +215,31 @@ class DailyLoginService:
         self.adb.force_stop_app(LINERANGERS_PACKAGE)
         self._wait(2)  # Wait for app to fully close
         
+        # Check for stop signal
+        if self._stop_event.is_set():
+            self._emit_log(f"  🛑 Stop signal received, aborting...")
+            return False
+        
         # Step 2: Clear app cache to ensure fresh login (optional but recommended)
         self._emit_log(f"  🧹 Clearing app cache...")
         self.adb.shell_su(f"rm -rf /data/data/{LINERANGERS_PACKAGE}/cache/*")
         self._wait(1)
+        
+        # Check for stop signal
+        if self._stop_event.is_set():
+            self._emit_log(f"  🛑 Stop signal received, aborting...")
+            return False
         
         # Step 3: Push XML to temp location
         temp_path = "/sdcard/_temp_lr_account.xml"
         self._emit_log(f"  📤 Pushing account file...")
         if not self.adb.push_file(account.filepath, temp_path):
             account.error_message = "Failed to push XML file"
+            return False
+        
+        # Check for stop signal
+        if self._stop_event.is_set():
+            self._emit_log(f"  🛑 Stop signal received, aborting...")
             return False
         
         # Step 4: Copy with root to app's shared_prefs
@@ -236,6 +251,11 @@ class DailyLoginService:
         
         self._wait(self.delay_after_push)
         
+        # Check for stop signal
+        if self._stop_event.is_set():
+            self._emit_log(f"  🛑 Stop signal received, aborting...")
+            return False
+        
         # Step 5: Start game fresh
         self._emit_log(f"  🎮 Starting Line Rangers...")
         self.adb.start_app(LINERANGERS_PACKAGE)
@@ -243,13 +263,24 @@ class DailyLoginService:
         # Step 6: Smart wait - wait until we detect a known UI element
         self._emit_log(f"  ⏳ Waiting for game to load...")
         if not self._wait_for_game_ready():
+            if self._stop_event.is_set():
+                self._emit_log(f"  🛑 Stop signal received, aborting...")
+                return False
             self._emit_log(f"  ⚠️ Game load timeout, continuing anyway...")
+        
+        # Check for stop signal
+        if self._stop_event.is_set():
+            self._emit_log(f"  🛑 Stop signal received, aborting...")
+            return False
         
         # Step 7: Run workflow or auto claim
         if self.workflow_steps:
             self._emit_log(f"  🔄 Running workflow ({len(self.workflow_steps)} steps)...")
             success = self._execute_workflow_steps()
             if not success:
+                if self._stop_event.is_set():
+                    self._emit_log(f"  🛑 Stop signal received, aborting...")
+                    return False
                 self._emit_log(f"  ⚠️ Workflow execution failed")
         elif self.auto_claim_enabled:
             self._claim_daily_rewards()
@@ -257,6 +288,11 @@ class DailyLoginService:
             # Just wait a fixed time if auto claim is disabled
             self._emit_log(f"  ⏳ Waiting {int(self.delay_for_game_load)}s...")
             self._wait(self.delay_for_game_load)
+        
+        # Check for stop signal before final cleanup - just abort, don't close game
+        if self._stop_event.is_set():
+            self._emit_log(f"  🛑 Stop signal received, game left running...")
+            return False
         
         # Step 8: Force stop after daily login is done
         self._emit_log(f"  ✅ Daily login complete, waiting before closing game...")

@@ -195,6 +195,13 @@ interface DailyLoginStatus {
           🚀 START ON {{ getSelectedCount() }} DEVICE(S)
         </button>
         <button 
+          class="btn btn-primary btn-large" 
+          (click)="resumeOnSelectedDevices()"
+          [disabled]="status().state === 'running' || status().processed_count === 0 || getSelectedCount() === 0"
+        >
+          ▶️ RESUME
+        </button>
+        <button 
           class="btn btn-danger btn-large" 
           (click)="stop()"
           [disabled]="status().state !== 'running'"
@@ -908,6 +915,40 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     this.refreshDevices();
   }
   
+  async resumeOnSelectedDevices(): Promise<void> {
+    const selected = this.getSelectedDevices();
+    if (selected.length === 0) {
+      this.addLog('❌ No devices selected');
+      return;
+    }
+    
+    this.addLog(`▶️ Resuming on ${selected.length} device(s)...`);
+    
+    try {
+      const resumeResponse = await fetch('/api/v1/multi-device/resume', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_serials: selected.map(d => d.serial),
+          mode_name: 'daily-login'
+        })
+      });
+      const resumeResult = await resumeResponse.json();
+      
+      if (resumeResult.success) {
+        this.addLog(`✅ ${resumeResult.message}`);
+        this.startMultiDeviceStatusPolling();
+      } else {
+        this.addLog(`❌ ${resumeResult.message}`);
+      }
+      
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    }
+    
+    this.refreshDevices();
+  }
+  
   private multiDeviceStatusInterval: any = null;
   
   startMultiDeviceStatusPolling(): void {
@@ -982,7 +1023,8 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     this.addLog(`📂 Scanning folder: ${this.folderPath}`);
     
     try {
-      const response = await fetch('/api/v1/daily-login/scan', {
+      // Use multi-device scan to populate shared queue
+      const response = await fetch('/api/v1/multi-device/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ folder_path: this.folderPath })
@@ -1106,14 +1148,27 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
 
   private async refreshStatus(): Promise<void> {
     try {
-      const response = await fetch('/api/v1/daily-login/status');
-      const status = await response.json();
-      this.status.set(status);
+      // Use multi-device status for accurate state
+      const response = await fetch('/api/v1/multi-device/status');
+      const multiStatus = await response.json();
+      
+      // Update status from multi-device endpoint
+      this.status.update(s => ({
+        ...s,
+        state: multiStatus.state,
+        folder_path: multiStatus.folder_path || s.folder_path,
+        total_accounts: multiStatus.total_accounts,
+        processed_count: multiStatus.processed_count,
+        message: multiStatus.total_accounts > 0 
+          ? `${multiStatus.processed_count}/${multiStatus.total_accounts} accounts processed`
+          : s.message,
+        accounts: multiStatus.accounts || s.accounts
+      }));
       
       // Auto-refresh screen when running
-      if (status.state === 'running' && !this.screenInterval) {
+      if (multiStatus.state === 'running' && !this.screenInterval) {
         this.startScreenRefresh();
-      } else if (status.state !== 'running' && this.screenInterval) {
+      } else if (multiStatus.state !== 'running' && this.screenInterval) {
         this.stopScreenRefresh();
       }
     } catch (error) {

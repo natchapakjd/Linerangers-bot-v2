@@ -637,6 +637,7 @@ from app.services.multi_device_service import get_multi_device_orchestrator
 class MultiDeviceStartRequest(BaseModel):
     device_serials: List[str]
     mode_name: str = "daily-login"
+    resume: bool = False
 
 
 @router.post("/multi-device/scan")
@@ -662,7 +663,7 @@ async def multi_device_start(request: MultiDeviceStartRequest):
     if not workflow_loaded:
         logger.warning(f"No workflow found for mode {request.mode_name}, will use auto-claim")
     
-    success = orchestrator.start(request.device_serials)
+    success = orchestrator.start(request.device_serials, resume=request.resume)
     
     if success:
         return CommandResponse(
@@ -685,6 +686,31 @@ async def multi_device_stop():
     return CommandResponse(
         success=success,
         message="All devices stopped" if success else "Not running"
+    )
+
+
+@router.post("/multi-device/resume", response_model=CommandResponse)
+async def multi_device_resume(request: MultiDeviceStartRequest):
+    """Resume processing from where it stopped."""
+    orchestrator = get_multi_device_orchestrator()
+    
+    # Load workflow for the mode
+    workflow_loaded = await orchestrator.load_workflow(request.mode_name)
+    if not workflow_loaded:
+        logger.warning(f"No workflow found for mode {request.mode_name}, will use auto-claim")
+    
+    success = orchestrator.start(request.device_serials, resume=True)
+    
+    if success:
+        remaining = orchestrator.queue.remaining_count
+        return CommandResponse(
+            success=True,
+            message=f"Resumed on {len(request.device_serials)} devices ({remaining} accounts remaining)"
+        )
+    
+    return CommandResponse(
+        success=False,
+        message="Failed to resume multi-device processing"
     )
 
 
