@@ -13,12 +13,14 @@ from loguru import logger
 
 from app.core.database import async_session_maker
 from app.models.user import User, UserRole
+from app.config import (
+    SECRET_KEY, 
+    ALGORITHM, 
+    ACCESS_TOKEN_EXPIRE_HOURS,
+    DEFAULT_ADMIN_USERNAME,
+    DEFAULT_ADMIN_PASSWORD
+)
 
-
-# Security configuration
-SECRET_KEY = "lrg-bot-secret-key-change-in-production-2024"  # TODO: Move to environment variable
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24 * 7  # 1 week
 
 # HTTP Bearer token scheme
 security = HTTPBearer(auto_error=False)
@@ -154,14 +156,14 @@ class AuthService:
                 select(User).where(User.role == UserRole.ADMIN)
             )
             if not result.scalar_one_or_none():
-                # Create default admin
+                # Create default admin from config
                 logger.warning("No admin found, creating default admin user...")
                 await self.create_user(
-                    username="natchapakj",
-                    password="1160101802134.Ab*%",
+                    username=DEFAULT_ADMIN_USERNAME,
+                    password=DEFAULT_ADMIN_PASSWORD,
                     role=UserRole.ADMIN
                 )
-                logger.warning("⚠️ Default admin created: natchapakj / 1160101802134.Ab*%")
+                logger.warning(f"⚠️ Default admin created: {DEFAULT_ADMIN_USERNAME}")
                 logger.warning("⚠️ Please change the password immediately!")
 
 

@@ -1,19 +1,26 @@
 """
 Line Rangers Bot - Main Application Entry Point
 """
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 from loguru import logger
 import sys
 
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
 from app.api.v1 import endpoints_router, websocket_router, license_router, admin_license_router, auth_router
 from app.api.v1.remote import router as remote_router
 from app.api.v1.workflow import router as workflow_router
 from app.api.v1.template_set import router as template_set_router, mode_config_router
-from app.config import API_HOST, API_PORT
+from app.config import (
+    API_HOST, API_PORT, ALLOWED_ORIGINS,
+    RATE_LIMIT_GLOBAL
+)
 from app.core.database import init_db
 from app.services.auth_service import get_auth_service
 
@@ -24,6 +31,9 @@ from app.models.workflow_template_set import WorkflowTemplateSet, ModeConfigurat
 logger.remove()
 logger.add(sys.stderr, level="INFO", format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>")
 
+# Setup rate limiter
+limiter = Limiter(key_func=get_remote_address, default_limits=[f"{RATE_LIMIT_GLOBAL}/minute"])
+
 # Create FastAPI app
 app = FastAPI(
     title="Line Rangers Bot",
@@ -31,10 +41,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Add CORS middleware with origins from config
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for ngrok access
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -79,6 +93,7 @@ async def startup():
     logger.info("🚀 Line Rangers Bot Server Starting...")
     logger.info(f"📡 API: http://{API_HOST}:{API_PORT}")
     logger.info(f"📖 Docs: http://{API_HOST}:{API_PORT}/docs")
+    logger.info(f"🔒 Rate Limit: {RATE_LIMIT_GLOBAL}/minute global")
 
 
 @app.on_event("shutdown")
@@ -89,3 +104,4 @@ async def shutdown():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host=API_HOST, port=API_PORT, reload=True)
+
