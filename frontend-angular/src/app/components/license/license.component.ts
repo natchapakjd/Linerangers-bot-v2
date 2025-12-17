@@ -1,6 +1,8 @@
-import { Component, signal } from '@angular/core';
+import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
+import { LicenseService } from '../../services/license.service';
 
 interface LicenseStatus {
   success: boolean;
@@ -311,6 +313,9 @@ export class LicenseComponent {
   isLoading = signal(false);
   hardwareId = signal<string | null>(null);
 
+  private licenseService = inject(LicenseService);
+  private router = inject(Router);
+
   constructor() {
     this.loadHardwareId();
   }
@@ -339,6 +344,15 @@ export class LicenseComponent {
       });
       const data: LicenseStatus = await response.json();
       this.status.set(data);
+      
+      // If activation successful, save to LicenseService and navigate to dashboard
+      if (data.success) {
+        this.licenseService.setLicenseValid(this.licenseKey.trim().toUpperCase());
+        // Auto navigate after short delay
+        setTimeout(() => {
+          this.router.navigate(['/']);
+        }, 1500);
+      }
     } catch (error) {
       this.status.set({
         success: false,

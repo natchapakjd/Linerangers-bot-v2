@@ -92,6 +92,21 @@ async def get_hardware_id():
     }
 
 
+@router.get("/check")
+async def check_license_valid():
+    """
+    Check if this device has a valid license.
+    Used by frontend to determine if user can access protected features.
+    """
+    service = get_license_service()
+    hardware_id = service.get_hardware_id()
+    is_valid = await service.check_hardware_has_valid_license(hardware_id)
+    return {
+        "has_valid_license": is_valid,
+        "hardware_id": hardware_id[:8] + "..."
+    }
+
+
 # ===== Admin Endpoints =====
 
 @admin_router.post("/create", response_model=LicenseResponse)

@@ -224,6 +224,30 @@ class LicenseService:
             logger.info(f"Reset hardware binding for license {license_key}")
             return True, "Hardware binding reset. License can be activated on a new device."
 
+    async def check_hardware_has_valid_license(self, hardware_id: str) -> bool:
+        """
+        Check if the given hardware ID has a valid license.
+        
+        Returns:
+            True if there's an active, non-expired license bound to this hardware.
+        """
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(License).where(License.hardware_id == hardware_id)
+            )
+            license_obj = result.scalar_one_or_none()
+            
+            if not license_obj:
+                return False
+            
+            if not license_obj.is_active:
+                return False
+            
+            if license_obj.is_expired:
+                return False
+            
+            return True
+
 
 # Singleton instance
 _license_service: Optional[LicenseService] = None

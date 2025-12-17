@@ -9,19 +9,25 @@ import { SettingsComponent } from './components/settings/settings.component';
 import { WorkflowBuilderComponent } from './components/workflow-builder/workflow-builder.component';
 import { TemplateSetManagerComponent } from './components/template-set-manager/template-set-manager.component';
 import { ModeConfigurationComponent } from './components/mode-configuration/mode-configuration.component';
-import { adminGuard } from './guards/auth.guard';
+import { adminGuard, licenseGuard } from './guards/auth.guard';
 
 export const routes: Routes = [
-  { path: '', component: DashboardComponent },
+  // Protected routes - require valid license (admin bypasses this)
+  { path: '', component: DashboardComponent, canActivate: [licenseGuard] },
+  { path: 'devices', component: DeviceManagerComponent, canActivate: [licenseGuard] },
+  { path: 'daily-login', component: DailyLoginComponent, canActivate: [licenseGuard] },
+  { path: 'settings', component: SettingsComponent, canActivate: [licenseGuard] },
+  { path: 'workflow-builder', component: WorkflowBuilderComponent, canActivate: [licenseGuard] },
+  { path: 'template-sets', component: TemplateSetManagerComponent, canActivate: [licenseGuard] },
+  { path: 'mode-config', component: ModeConfigurationComponent, canActivate: [licenseGuard] },
+  
+  // Public routes - accessible without license
   { path: 'login', component: LoginComponent },
-  { path: 'devices', component: DeviceManagerComponent },
-  { path: 'daily-login', component: DailyLoginComponent },
   { path: 'license', component: LicenseComponent },
-  { path: 'settings', component: SettingsComponent },
-  { path: 'workflow-builder', component: WorkflowBuilderComponent },
-  { path: 'template-sets', component: TemplateSetManagerComponent },
-  { path: 'mode-config', component: ModeConfigurationComponent },
+  
+  // Admin routes
   { path: 'admin/license', component: AdminLicenseComponent, canActivate: [adminGuard] },
+  
   { path: '**', redirectTo: '' }
 ];
 
