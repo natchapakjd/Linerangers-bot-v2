@@ -854,39 +854,122 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
       return;
     }
     
-    this.addLog(`🚀 Starting Daily Login on ${selected.length} device(s)...`);
+    if (!this.folderPath) {
+      this.addLog('❌ No folder path set. Scan folder first.');
+      return;
+    }
     
-    for (const device of selected) {
-      try {
-        // First scan folder for this device
-        await fetch(`/api/v1/devices/${device.serial}/daily-login/scan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ folder_path: this.folderPath })
-        });
-        
-        // Then start
-        const response = await fetch(`/api/v1/devices/${device.serial}/daily-login/start`, {
-          method: 'POST'
-        });
-        const result = await response.json();
-        
-        this.addLog(result.success 
-          ? `✅ Started on ${device.serial}` 
-          : `❌ ${device.serial}: ${result.message}`
-        );
-      } catch (error) {
-        this.addLog(`❌ Error on ${device.serial}: ${error}`);
+    this.addLog(`🚀 Starting Multi-Device Parallel Processing...`);
+    this.addLog(`📂 Folder: ${this.folderPath}`);
+    this.addLog(`📱 Devices: ${selected.map(d => d.serial).join(', ')}`);
+    
+    try {
+      // Step 1: Scan folder into shared queue
+      this.addLog('📂 Loading accounts into shared queue...');
+      const scanResponse = await fetch('/api/v1/multi-device/scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ folder_path: this.folderPath })
+      });
+      const scanResult = await scanResponse.json();
+      
+      if (!scanResult.success) {
+        this.addLog(`❌ Failed to load accounts: ${scanResult.message}`);
+        return;
       }
+      
+      this.addLog(`✅ Loaded ${scanResult.total_accounts} accounts into shared queue`);
+      
+      // Step 2: Start multi-device processing
+      const startResponse = await fetch('/api/v1/multi-device/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          device_serials: selected.map(d => d.serial),
+          mode_name: 'daily-login'
+        })
+      });
+      const startResult = await startResponse.json();
+      
+      if (startResult.success) {
+        this.addLog(`✅ ${startResult.message}`);
+        this.addLog(`⏳ ${selected.length} devices now processing ${scanResult.total_accounts} accounts in parallel!`);
+        
+        // Start polling for multi-device status
+        this.startMultiDeviceStatusPolling();
+      } else {
+        this.addLog(`❌ ${startResult.message}`);
+      }
+      
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
     }
     
     this.refreshDevices();
+  }
+  
+  private multiDeviceStatusInterval: any = null;
+  
+  startMultiDeviceStatusPolling(): void {
+    if (this.multiDeviceStatusInterval) {
+      clearInterval(this.multiDeviceStatusInterval);
+    }
+    
+    this.multiDeviceStatusInterval = setInterval(async () => {
+      try {
+        const response = await fetch('/api/v1/multi-device/status');
+        const status = await response.json();
+        
+        // Update status from multi-device status
+        this.status.update(s => ({
+          ...s,
+          state: status.state,
+          total_accounts: status.total_accounts,
+          processed_count: status.processed_count,
+          message: `${status.processed_count}/${status.total_accounts} accounts processed`,
+          accounts: status.accounts || []
+        }));
+        
+        // Log device progress
+        if (status.devices && status.devices.length > 0) {
+          for (const device of status.devices) {
+            if (device.is_running && device.current_account) {
+              // Device is working on an account
+            }
+          }
+        }
+        
+        // Stop polling when completed or idle
+        if (status.state === 'completed' || status.state === 'idle') {
+          this.addLog(`🏁 Multi-device processing ${status.state}!`);
+          this.addLog(`📊 Total: ${status.processed_count}/${status.total_accounts}`);
+          
+          // Log per-device stats
+          for (const device of status.devices || []) {
+            this.addLog(`📱 ${device.serial}: ${device.success_count} success, ${device.error_count} errors`);
+          }
+          
+          this.stopMultiDeviceStatusPolling();
+          this.refreshDevices();
+        }
+      } catch (error) {
+        console.error('Error polling multi-device status:', error);
+      }
+    }, 2000); // Poll every 2 seconds
+  }
+  
+  stopMultiDeviceStatusPolling(): void {
+    if (this.multiDeviceStatusInterval) {
+      clearInterval(this.multiDeviceStatusInterval);
+      this.multiDeviceStatusInterval = null;
+    }
   }
 
   ngOnDestroy(): void {
     if (this.statusInterval) {
       clearInterval(this.statusInterval);
     }
+    this.stopMultiDeviceStatusPolling();
   }
 
   async scanFolder(): Promise<void> {
@@ -959,19 +1042,32 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   }
 
   async stop(): Promise<void> {
-    this.addLog('🛑 Stopping Daily Login...');
+    this.addLog('🛑 Stopping all devices...');
     
     try {
+      // Stop multi-device processing
+      const multiResponse = await fetch('/api/v1/multi-device/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const multiResult = await multiResponse.json();
+      
+      this.addLog(multiResult.success ? `✅ ${multiResult.message}` : `⚠️ Multi-device: ${multiResult.message}`);
+      
+      // Also stop single-device (legacy) if running
       const response = await fetch('/api/v1/daily-login/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       });
-      const result = await response.json();
       
-      this.addLog(result.success ? `✅ ${result.message}` : `❌ ${result.message}`);
+      // Stop polling
+      this.stopMultiDeviceStatusPolling();
+      
     } catch (error) {
       this.addLog(`❌ Error: ${error}`);
     }
+    
+    this.refreshDevices();
   }
 
   async saveSettings(): Promise<void> {

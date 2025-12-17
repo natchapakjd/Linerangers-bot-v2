@@ -628,3 +628,68 @@ async def restart_game(serial: str):
     except Exception as e:
         return CommandResponse(success=False, message=str(e))
 
+
+# ==================== Multi-Device Endpoints ====================
+
+from app.services.multi_device_service import get_multi_device_orchestrator
+
+
+class MultiDeviceStartRequest(BaseModel):
+    device_serials: List[str]
+    mode_name: str = "daily-login"
+
+
+@router.post("/multi-device/scan")
+async def multi_device_scan(request: ScanFolderRequest):
+    """Scan folder and load accounts into shared queue."""
+    orchestrator = get_multi_device_orchestrator()
+    count = orchestrator.scan_folder(request.folder_path)
+    
+    return {
+        "success": count > 0,
+        "message": f"Loaded {count} accounts into shared queue",
+        "total_accounts": count
+    }
+
+
+@router.post("/multi-device/start", response_model=CommandResponse)
+async def multi_device_start(request: MultiDeviceStartRequest):
+    """Start parallel processing on multiple devices."""
+    orchestrator = get_multi_device_orchestrator()
+    
+    # Load workflow for the mode
+    workflow_loaded = await orchestrator.load_workflow(request.mode_name)
+    if not workflow_loaded:
+        logger.warning(f"No workflow found for mode {request.mode_name}, will use auto-claim")
+    
+    success = orchestrator.start(request.device_serials)
+    
+    if success:
+        return CommandResponse(
+            success=True,
+            message=f"Started {len(request.device_serials)} devices in parallel"
+        )
+    
+    return CommandResponse(
+        success=False,
+        message="Failed to start multi-device processing"
+    )
+
+
+@router.post("/multi-device/stop", response_model=CommandResponse)
+async def multi_device_stop():
+    """Stop all devices."""
+    orchestrator = get_multi_device_orchestrator()
+    success = orchestrator.stop()
+    
+    return CommandResponse(
+        success=success,
+        message="All devices stopped" if success else "Not running"
+    )
+
+
+@router.get("/multi-device/status")
+async def multi_device_status():
+    """Get status of multi-device processing."""
+    orchestrator = get_multi_device_orchestrator()
+    return orchestrator.get_status()
