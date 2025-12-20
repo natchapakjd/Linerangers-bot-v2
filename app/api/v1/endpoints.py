@@ -718,4 +718,45 @@ async def multi_device_resume(request: MultiDeviceStartRequest):
 async def multi_device_status():
     """Get status of multi-device processing."""
     orchestrator = get_multi_device_orchestrator()
-    return orchestrator.get_status()
+    status = orchestrator.get_status()
+    # Include settings
+    status["move_on_complete"] = orchestrator.queue.move_on_complete
+    status["done_folder"] = orchestrator.queue.custom_done_folder or "auto (done subfolder)"
+    return status
+
+
+class MultiDeviceSettingsRequest(BaseModel):
+    move_on_complete: bool = True
+    done_folder: str = ""  # Empty = auto-create subfolder
+
+
+@router.post("/multi-device/settings", response_model=CommandResponse)
+async def multi_device_settings(request: MultiDeviceSettingsRequest):
+    """Update multi-device settings."""
+    orchestrator = get_multi_device_orchestrator()
+    orchestrator.queue.move_on_complete = request.move_on_complete
+    orchestrator.queue.custom_done_folder = request.done_folder
+    
+    folder_msg = request.done_folder if request.done_folder else "auto (done subfolder)"
+    return CommandResponse(
+        success=True,
+        message=f"Settings saved. Done folder: {folder_msg}"
+    )
+
+
+@router.post("/multi-device/account/{filename}/mark-bugged", response_model=CommandResponse)
+async def mark_account_bugged(filename: str):
+    """Mark an account as bugged and delete the file."""
+    orchestrator = get_multi_device_orchestrator()
+    success = orchestrator.queue.mark_as_bugged(filename)
+    
+    if success:
+        return CommandResponse(
+            success=True,
+            message=f"Deleted bugged file: {filename}"
+        )
+    return CommandResponse(
+        success=False,
+        message=f"Failed to delete {filename}"
+    )
+

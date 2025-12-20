@@ -149,6 +149,14 @@ interface DailyLoginStatus {
             <span class="account-status" *ngIf="account.processed">
               {{ account.success ? '✓' : '✗' }}
             </span>
+            <button 
+              class="btn-bugged" 
+              (click)="markAsBugged(account)" 
+              title="Mark as bugged & delete"
+              [disabled]="status().state === 'running'"
+            >
+              🗑️
+            </button>
           </div>
         </div>
       </div>
@@ -166,6 +174,37 @@ interface DailyLoginStatus {
                 </div>
               </label>
               <p class="toggle-hint">Automatically close popups and claim daily rewards</p>
+            </div>
+            
+            <!-- Move to Done Toggle -->
+            <div class="toggle-section">
+              <label class="toggle-label">
+                <span class="toggle-text">📁 Move to Done Folder</span>
+                <div class="toggle-switch" [class.active]="settings.move_on_complete" (click)="toggleMoveOnComplete()">
+                  <div class="toggle-slider"></div>
+                </div>
+              </label>
+              <p class="toggle-hint">Move processed files to done folder after completion</p>
+              
+              <!-- Done Folder Path (shown when move is enabled) -->
+              <div class="done-folder-input" *ngIf="settings.move_on_complete">
+                <div class="folder-input-group">
+                  <input 
+                    type="text" 
+                    [(ngModel)]="settings.done_folder"
+                    placeholder="Leave empty for auto (done subfolder)"
+                    class="folder-input"
+                  />
+                  <button 
+                    class="btn btn-secondary btn-small" 
+                    (click)="browseDoneFolder()"
+                    [disabled]="isBrowsingDone()"
+                  >
+                    {{ isBrowsingDone() ? '⏳' : '📁' }} Browse
+                  </button>
+                </div>
+                <p class="folder-hint">{{ settings.done_folder ? settings.done_folder : 'Auto: creates "done" subfolder in source folder' }}</p>
+              </div>
             </div>
             
             <div class="settings-grid">
@@ -610,6 +649,28 @@ interface DailyLoginStatus {
       font-size: 1rem;
     }
 
+    .btn-bugged {
+      padding: 0.25rem 0.5rem;
+      background: transparent;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.85rem;
+      transition: all 0.2s;
+      opacity: 0.6;
+    }
+
+    .btn-bugged:hover:not(:disabled) {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: #ef4444;
+      opacity: 1;
+    }
+
+    .btn-bugged:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+
     /* Settings */
     .settings-grid {
       display: grid;
@@ -743,6 +804,31 @@ interface DailyLoginStatus {
       margin-bottom: 0;
     }
 
+    .done-folder-input {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .done-folder-input .folder-input-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .done-folder-input .folder-input {
+      flex: 1;
+      font-size: 0.85rem;
+    }
+
+    .folder-hint {
+      font-size: 0.7rem;
+      color: #64748b;
+      margin-top: 0.5rem;
+      margin-bottom: 0;
+      font-style: italic;
+    }
+
     .toggle-switch {
       width: 52px;
       height: 28px;
@@ -782,6 +868,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   folderPath = '';
   isScanning = signal(false);
   isBrowsing = signal(false);
+  isBrowsingDone = signal(false);
   isRefreshingScreen = signal(false);
   isLoadingDevices = signal(false);
   screenImage = signal<string>('');
@@ -803,7 +890,9 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     delay_after_push: 2,
     delay_for_game_load: 60,
     delay_between_accounts: 5,
-    auto_claim_enabled: true
+    auto_claim_enabled: true,
+    move_on_complete: true,
+    done_folder: ''
   };
   
   private statusInterval: any;
@@ -1146,6 +1235,97 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     }
   }
 
+  async toggleMoveOnComplete(): Promise<void> {
+    const newValue = !this.settings.move_on_complete;
+    this.settings.move_on_complete = newValue;
+    
+    try {
+      const response = await fetch('/api/v1/multi-device/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          move_on_complete: newValue,
+          done_folder: this.settings.done_folder 
+        })
+      });
+      const result = await response.json();
+      
+      this.addLog(newValue ? '📁 Move to done folder enabled' : '📁 Move to done folder disabled');
+    } catch (error) {
+      // Revert on error
+      this.settings.move_on_complete = !newValue;
+      this.addLog(`❌ Error: ${error}`);
+    }
+  }
+
+  async browseDoneFolder(): Promise<void> {
+    this.isBrowsingDone.set(true);
+    this.addLog('📂 Opening folder picker for done folder...');
+    
+    try {
+      const response = await fetch('/api/v1/browse-folder');
+      const result = await response.json();
+      
+      if (result.success && result.folder_path) {
+        this.settings.done_folder = result.folder_path;
+        this.addLog(`✅ Done folder: ${result.folder_path}`);
+        
+        // Save the setting immediately
+        await this.saveDoneFolderSetting();
+      } else {
+        this.addLog('ℹ️ No folder selected');
+      }
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    } finally {
+      this.isBrowsingDone.set(false);
+    }
+  }
+
+  private async saveDoneFolderSetting(): Promise<void> {
+    try {
+      const response = await fetch('/api/v1/multi-device/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          move_on_complete: this.settings.move_on_complete,
+          done_folder: this.settings.done_folder 
+        })
+      });
+      const result = await response.json();
+      this.addLog(`✅ ${result.message}`);
+    } catch (error) {
+      this.addLog(`❌ Error saving: ${error}`);
+    }
+  }
+
+  async markAsBugged(account: AccountInfo): Promise<void> {
+    // Confirmation dialog
+    if (!confirm(`⚠️ Are you sure you want to delete "${account.filename}"?\n\nThis action cannot be undone!`)) {
+      return;
+    }
+    
+    this.addLog(`🗑️ Deleting bugged file: ${account.filename}...`);
+    
+    try {
+      const response = await fetch(`/api/v1/multi-device/account/${encodeURIComponent(account.filename)}/mark-bugged`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        this.addLog(`✅ Deleted: ${account.filename}`);
+        // Refresh status to update the list
+        this.refreshStatus();
+      } else {
+        this.addLog(`❌ ${result.message}`);
+      }
+    } catch (error) {
+      this.addLog(`❌ Error: ${error}`);
+    }
+  }
+
   private async refreshStatus(): Promise<void> {
     try {
       // Use multi-device status for accurate state
@@ -1164,6 +1344,15 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
           : s.message,
         accounts: multiStatus.accounts || s.accounts
       }));
+      
+      // Sync move_on_complete setting
+      if (multiStatus.move_on_complete !== undefined) {
+        this.settings.move_on_complete = multiStatus.move_on_complete;
+      }
+      // Sync done_folder (server returns "auto (...)" for empty)
+      if (multiStatus.done_folder !== undefined && !multiStatus.done_folder.startsWith('auto')) {
+        this.settings.done_folder = multiStatus.done_folder;
+      }
       
       // Auto-refresh screen when running
       if (multiStatus.state === 'running' && !this.screenInterval) {

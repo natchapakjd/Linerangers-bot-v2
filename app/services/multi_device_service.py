@@ -39,6 +39,8 @@ class SharedAccountQueue:
         self._processed: Set[str] = set()  # filenames that have been processed
         self._lock = threading.Lock()
         self._folder_path: str = ""
+        self.move_on_complete: bool = True  # Move files to 'done' folder after processing
+        self.custom_done_folder: str = ""  # Custom path for done folder, empty = auto-create subfolder
     
     @property
     def total_count(self) -> int:
@@ -110,6 +112,15 @@ class SharedAccountQueue:
                 acc.success = False
                 acc.error_message = ""
     
+    def prepare_for_resume(self):
+        """Prepare the queue for resume by resetting index but keeping processed status.
+        
+        This allows get_next_account() to scan from the beginning and skip
+        already processed accounts.
+        """
+        with self._lock:
+            self._current_index = 0
+    
     def get_accounts_status(self) -> List[dict]:
         """Get status of all accounts."""
         return [
@@ -121,6 +132,85 @@ class SharedAccountQueue:
             }
             for acc in self._accounts
         ]
+    
+    def move_to_done(self, filename: str) -> bool:
+        """Move a processed file to the done folder."""
+        from pathlib import Path
+        import shutil
+        
+        with self._lock:
+            # Find the account
+            account = None
+            for acc in self._accounts:
+                if acc.filename == filename:
+                    account = acc
+                    break
+            
+            if not account:
+                logger.warning(f"Account {filename} not found in queue")
+                return False
+            
+            source = Path(account.filepath)
+            if not source.exists():
+                logger.warning(f"Source file {source} does not exist")
+                return False
+            
+            # Use custom folder or create 'done' subfolder
+            if self.custom_done_folder:
+                done_folder = Path(self.custom_done_folder)
+            else:
+                done_folder = source.parent / "done"
+            
+            # Create folder if not exists
+            done_folder.mkdir(parents=True, exist_ok=True)
+            
+            # Move file
+            dest = done_folder / filename
+            try:
+                shutil.move(str(source), str(dest))
+                account.filepath = str(dest)  # Update filepath
+                logger.info(f"Moved {filename} to {done_folder}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to move {filename}: {e}")
+                return False
+    
+    def mark_as_bugged(self, filename: str) -> bool:
+        """Mark a file as bugged and delete it from disk."""
+        from pathlib import Path
+        
+        with self._lock:
+            # Find the account
+            account = None
+            account_index = -1
+            for i, acc in enumerate(self._accounts):
+                if acc.filename == filename:
+                    account = acc
+                    account_index = i
+                    break
+            
+            if not account:
+                logger.warning(f"Account {filename} not found in queue")
+                return False
+            
+            source = Path(account.filepath)
+            
+            # Delete file from disk
+            try:
+                if source.exists():
+                    source.unlink()
+                    logger.info(f"Deleted bugged file: {filename}")
+                
+                # Remove from accounts list
+                self._accounts.pop(account_index)
+                
+                # Add to processed to skip if somehow re-scanned
+                self._processed.add(filename)
+                
+                return True
+            except Exception as e:
+                logger.error(f"Failed to delete {filename}: {e}")
+                return False
 
 
 class MultiDeviceOrchestrator:
@@ -202,6 +292,9 @@ class MultiDeviceOrchestrator:
                 logger.info("All accounts already processed, resetting for new run...")
                 self.queue.reset()
             else:
+                # Reset index to scan from beginning, but keep processed status
+                # This allows get_next_account() to skip already processed accounts
+                self.queue.prepare_for_resume()
                 self._emit_log(f"▶️ Resuming from account #{self.queue.processed_count + 1} ({remaining} remaining)")
         else:
             self.queue.reset()
@@ -273,19 +366,26 @@ class MultiDeviceOrchestrator:
                 # Process the account
                 success = service._process_account(account)
                 
-                # Mark as processed
-                self.queue.mark_processed(account.filename, success)
-                progress.processed_count += 1
+                # Mark as processed AFTER processing completes
+                # This ensures if we stop mid-processing, the account will be re-processed on resume
+                self.queue.mark_processed(account.filename, success=success)
                 
                 if success:
                     progress.success_count += 1
                     self._emit_log(f"[{serial}] ✅ {account.filename} - Done")
+                    # Move to 'done' folder if enabled
+                    if self.queue.move_on_complete:
+                        if self.queue.move_to_done(account.filename):
+                            self._emit_log(f"[{serial}] 📁 Moved to done folder")
                 else:
                     progress.error_count += 1
                     self._emit_log(f"[{serial}] ⚠️ {account.filename} - Failed")
                 
+                progress.processed_count += 1
+                
             except Exception as e:
-                self.queue.mark_processed(account.filename, False)
+                # Mark as processed even on error to avoid infinite retry
+                self.queue.mark_processed(account.filename, success=False)
                 progress.processed_count += 1
                 progress.error_count += 1
                 progress.last_error = str(e)
