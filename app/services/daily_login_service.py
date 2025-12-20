@@ -4,8 +4,9 @@ Daily Login Service - Manages account switching for daily login automation.
 import os
 import threading
 import time
+import hashlib
 from pathlib import Path
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Dict, Tuple
 from dataclasses import dataclass, field
 from enum import Enum
 from loguru import logger
@@ -73,6 +74,272 @@ class DailyLoginService:
         self.delay_for_game_load = 60.0  # max seconds to wait for game to load
         self.delay_between_accounts = 5.0  # seconds between accounts
         self.template_check_interval = 2.0  # seconds between template checks
+    
+    def find_duplicates_and_remove(self, folder_a: str, folder_b: str, dry_run: bool = False) -> Dict[str, any]:
+        """
+        ค้นหาไฟล์ที่มี account ID ซ้ำกันระหว่าง folder A และ folder B
+        ถ้าพบว่าไฟล์ใน A มี account เดียวกันกับไฟล์ใน B ให้ลบไฟล์นั้นออกจาก B
+        
+        Args:
+            folder_a: Path ของ folder ต้นทาง (master folder)
+            folder_b: Path ของ folder ที่จะลบไฟล์ซ้ำ
+            dry_run: ถ้า True จะแค่แสดง preview ว่าจะลบอะไรบ้าง ไม่ลบจริง
+        
+        Returns:
+            Dict containing:
+                - duplicates: List of duplicated files that were/would be removed
+                - removed_count: Number of files removed
+                - folder_a_count: Total files in folder A
+                - folder_b_count: Total files in folder B  
+                - errors: Any errors that occurred
+        """
+        path_a = Path(folder_a)
+        path_b = Path(folder_b)
+        
+        result = {
+            "duplicates": [],
+            "removed_count": 0,
+            "folder_a_count": 0,
+            "folder_b_count": 0,
+            "errors": [],
+            "dry_run": dry_run
+        }
+        
+        # Validate folders
+        if not path_a.exists() or not path_a.is_dir():
+            result["errors"].append(f"Folder A not found or not a directory: {folder_a}")
+            return result
+        
+        if not path_b.exists() or not path_b.is_dir():
+            result["errors"].append(f"Folder B not found or not a directory: {folder_b}")
+            return result
+        
+        # Get all XML files from both folders
+        files_a = list(path_a.glob("*.xml"))
+        files_b = list(path_b.glob("*.xml"))
+        
+        result["folder_a_count"] = len(files_a)
+        result["folder_b_count"] = len(files_b)
+        
+        self._emit_log(f"📂 Folder A: {len(files_a)} files, Folder B: {len(files_b)} files")
+        logger.info(f"Scanning Folder A: {folder_a} ({len(files_a)} files)")
+        logger.info(f"Scanning Folder B: {folder_b} ({len(files_b)} files)")
+        
+        # Create account ID map for folder A files
+        account_map_a: Dict[str, str] = {}  # account_id -> filepath
+        
+        for file_a in files_a:
+            try:
+                account_id = self._extract_account_id(file_a)
+                if account_id:
+                    account_map_a[account_id] = str(file_a)
+                    logger.debug(f"File A: {file_a.name} -> account_id: {account_id[:20]}...")
+                else:
+                    logger.warning(f"No account ID found in: {file_a.name}")
+            except Exception as e:
+                result["errors"].append(f"Error reading {file_a.name}: {str(e)}")
+                logger.error(f"Error reading {file_a.name}: {str(e)}")
+        
+        self._emit_log(f"📊 Found {len(account_map_a)} unique accounts in Folder A")
+        logger.info(f"Account map A has {len(account_map_a)} unique accounts")
+        
+        # Check files in folder B against folder A account IDs
+        for file_b in files_b:
+            try:
+                account_id = self._extract_account_id(file_b)
+                if not account_id:
+                    continue
+                    
+                logger.debug(f"File B: {file_b.name} -> account_id: {account_id[:20]}...")
+                
+                if account_id in account_map_a:
+                    # Found duplicate!
+                    dup_info = {
+                        "file_b": str(file_b),
+                        "file_b_name": file_b.name,
+                        "matches_with": account_map_a[account_id],
+                        "matches_with_name": Path(account_map_a[account_id]).name,
+                        "account_id": account_id[:30] + "..." if len(account_id) > 30 else account_id
+                    }
+                    result["duplicates"].append(dup_info)
+                    
+                    self._emit_log(f"🔄 Duplicate found: {file_b.name} == {dup_info['matches_with_name']}")
+                    logger.info(f"DUPLICATE: {file_b.name} matches {dup_info['matches_with_name']} (account: {account_id[:20]}...)")
+                    
+                    if not dry_run:
+                        # Remove the file from folder B
+                        try:
+                            os.remove(str(file_b))
+                            result["removed_count"] += 1
+                            self._emit_log(f"🗑️ Removed: {file_b.name}")
+                        except Exception as e:
+                            result["errors"].append(f"Error removing {file_b.name}: {str(e)}")
+                    else:
+                        result["removed_count"] += 1  # Count as would be removed
+                        
+            except Exception as e:
+                result["errors"].append(f"Error processing {file_b.name}: {str(e)}")
+                logger.error(f"Error processing {file_b.name}: {str(e)}")
+        
+        if dry_run:
+            self._emit_log(f"🔍 Preview: {result['removed_count']} files would be removed")
+        else:
+            self._emit_log(f"✅ Removed {result['removed_count']} duplicate files from Folder B")
+        
+        logger.info(f"Duplicate check complete: {result['removed_count']} duplicates {'found' if dry_run else 'removed'}")
+        
+        return result
+    
+    def _extract_account_id(self, filepath: Path) -> Optional[str]:
+        """
+        ดึง account ID จากไฟล์ XML ของ Line Rangers
+        ใช้ _DEVICE_UUID_KEY หรือ _ENC_LF_AC_KEY เป็น unique identifier
+        """
+        try:
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            import re
+            
+            # Pattern 1: _DEVICE_UUID_KEY (primary identifier)
+            device_uuid_match = re.search(r'name="_DEVICE_UUID_KEY"[^>]*>([^<]+)</string>', content)
+            if device_uuid_match:
+                return device_uuid_match.group(1).strip()
+            
+            # Pattern 2: _ENC_LF_AC_KEY (encrypted account key - use first 100 chars as identifier)
+            enc_key_match = re.search(r'name="_ENC_LF_AC_KEY"[^>]*>([^<]+)</string>', content, re.DOTALL)
+            if enc_key_match:
+                # Clean up the encrypted key (remove whitespace)
+                enc_key = enc_key_match.group(1).replace('\n', '').replace(' ', '').strip()
+                # Use hash of the key as identifier to handle different formatting
+                return hashlib.md5(enc_key.encode()).hexdigest()
+            
+            # Pattern 3: Look for 'mid' (LINE user mid)
+            mid_match = re.search(r'name="mid"[^>]*>([^<]+)</string>', content)
+            if mid_match:
+                return mid_match.group(1).strip()
+            
+            # Pattern 4: Look for 'uuid'
+            uuid_match = re.search(r'name="uuid"[^>]*>([^<]+)</string>', content)
+            if uuid_match:
+                return uuid_match.group(1).strip()
+            
+            # Fallback: use file hash if no account ID found
+            logger.warning(f"No account ID pattern found in {filepath.name}, using hash fallback")
+            return self._get_file_hash(filepath)
+            
+        except Exception as e:
+            logger.error(f"Error extracting account ID from {filepath}: {e}")
+            return None
+    
+    def _get_file_hash(self, filepath: Path) -> str:
+        """
+        คำนวณ hash ของไฟล์เพื่อเปรียบเทียบเนื้อหา
+        """
+        hash_md5 = hashlib.md5()
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                hash_md5.update(chunk)
+        return hash_md5.hexdigest()
+    
+    def export_account(self, save_folder: str, filename: str, device_serial: str = None) -> Dict[str, any]:
+        """
+        ดึงไฟล์ _LINE_COCOS_PREF_KEY.xml จาก device และบันทึกเป็นไฟล์ใหม่
+        
+        Args:
+            save_folder: Path ของ folder ที่จะบันทึกไฟล์
+            filename: ชื่อไฟล์ที่ต้องการบันทึก (ไม่ต้องใส่ .xml)
+            device_serial: Serial ของ device (ถ้าไม่ระบุจะใช้ default)
+        
+        Returns:
+            Dict containing:
+                - success: True/False
+                - filepath: Path ของไฟล์ที่บันทึก
+                - message: ข้อความแสดงสถานะ
+        """
+        result = {
+            "success": False,
+            "filepath": "",
+            "message": ""
+        }
+        
+        # Validate folder
+        save_path = Path(save_folder)
+        if not save_path.exists():
+            try:
+                save_path.mkdir(parents=True, exist_ok=True)
+                self._emit_log(f"📂 Created folder: {save_folder}")
+            except Exception as e:
+                result["message"] = f"Cannot create folder: {str(e)}"
+                return result
+        
+        if not save_path.is_dir():
+            result["message"] = f"Not a directory: {save_folder}"
+            return result
+        
+        # Clean filename - remove .xml if already present, then add it
+        clean_filename = filename.strip()
+        if clean_filename.lower().endswith('.xml'):
+            clean_filename = clean_filename[:-4]
+        clean_filename = clean_filename + '.xml'
+        
+        # Full path for saving
+        output_path = save_path / clean_filename
+        
+        # Check if file already exists
+        if output_path.exists():
+            result["message"] = f"File already exists: {clean_filename}"
+            return result
+        
+        # Connect to ADB
+        adb = self.adb
+        if device_serial:
+            # Create new ADB instance for specific device
+            from app.services.adb_service import AdbService
+            from app.config import ADB_HOST, ADB_PORT
+            adb = AdbService(host=ADB_HOST, port=ADB_PORT, device_serial=device_serial)
+        
+        if not adb.connect():
+            result["message"] = "Failed to connect to ADB"
+            return result
+        
+        self._emit_log(f"📱 Connected to device: {device_serial or 'default'}")
+        
+        # Pull file from device to temp location
+        temp_path = "/sdcard/_temp_export_account.xml"
+        
+        # Copy from app's shared_prefs to sdcard using root
+        self._emit_log(f"📤 Copying account data from game...")
+        copy_success = adb.shell_su(f"cp {LINERANGERS_PREF_PATH} {temp_path}")
+        
+        if copy_success is None:
+            result["message"] = "Failed to copy file from game (need root access)"
+            return result
+        
+        # Set permissions so we can pull it
+        adb.shell_su(f"chmod 644 {temp_path}")
+        
+        # Pull file from device
+        self._emit_log(f"📥 Pulling file to local...")
+        if not adb.pull_file(temp_path, str(output_path)):
+            result["message"] = "Failed to pull file from device"
+            return result
+        
+        # Clean up temp file on device
+        adb.shell(f"rm {temp_path}")
+        
+        # Verify file was created
+        if output_path.exists():
+            file_size = output_path.stat().st_size
+            result["success"] = True
+            result["filepath"] = str(output_path)
+            result["message"] = f"Account exported successfully: {clean_filename} ({file_size} bytes)"
+            self._emit_log(f"✅ Exported: {clean_filename}")
+            logger.info(f"Account exported to: {output_path}")
+        else:
+            result["message"] = "File was not created"
+        
+        return result
     
     @property
     def status(self) -> DailyLoginStatus:

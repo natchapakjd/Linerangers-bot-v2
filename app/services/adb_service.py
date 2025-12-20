@@ -182,6 +182,41 @@ class AdbService:
             logger.error(f"Push file error: {e}")
             return False
     
+    def pull_file(self, remote_path: str, local_path: str) -> bool:
+        """Pull a file from the device to local."""
+        try:
+            result = subprocess.run(
+                ["adb", "-s", self.device_address, "pull", remote_path, local_path],
+                capture_output=True,
+                encoding='utf-8', 
+                errors='replace',
+                timeout=30
+            )
+            if result.returncode == 0:
+                logger.success(f"Pulled {remote_path} to {local_path}")
+                return True
+            else:
+                logger.error(f"Pull failed: {result.stderr}")
+                return False
+        except Exception as e:
+            logger.error(f"Pull file error: {e}")
+            return False
+    
+    def shell(self, command: str) -> str:
+        """Run a shell command without root."""
+        try:
+            result = subprocess.run(
+                ["adb", "-s", self.device_address, "shell", command],
+                capture_output=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=30
+            )
+            return result.stdout + result.stderr
+        except Exception as e:
+            logger.error(f"Shell error: {e}")
+            return ""
+    
     def shell_su(self, command: str) -> Tuple[bool, str]:
         """Run a shell command with root (su) privileges."""
         try:

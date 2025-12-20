@@ -30,6 +30,12 @@ interface DailyLoginStatus {
   accounts: AccountInfo[];
 }
 
+interface DevicePreview {
+  serial: string;
+  status: string;
+  image: string | null;
+}
+
 @Component({
   selector: 'app-daily-login',
   standalone: true,
@@ -223,6 +229,209 @@ interface DailyLoginStatus {
             </div>
             <button class="btn btn-secondary" (click)="saveSettings()">💾 Save Settings</button>
           </div>
+
+      <!-- Find Duplicates Tool -->
+      <div class="card duplicates-section">
+        <h3>🔍 Find Duplicates Tool</h3>
+        <p class="hint-text">เปรียบเทียบไฟล์ XML ระหว่าง 2 folders - ถ้าพบไฟล์ซ้ำใน Folder B จะลบออก</p>
+        
+        <div class="duplicates-form">
+          <div class="folder-row">
+            <label>📂 Folder A (Master - ไม่ลบ)</label>
+            <div class="folder-input-group">
+              <input 
+                type="text" 
+                [(ngModel)]="duplicateFolderA"
+                placeholder="Folder A path..."
+                class="folder-input"
+              />
+              <button 
+                class="btn btn-secondary btn-small" 
+                (click)="browseDuplicateFolderA()"
+                [disabled]="isBrowsingDupA()"
+              >
+                {{ isBrowsingDupA() ? '⏳' : '📁' }}
+              </button>
+            </div>
+          </div>
+          
+          <div class="folder-row">
+            <label>📂 Folder B (จะลบไฟล์ซ้ำ)</label>
+            <div class="folder-input-group">
+              <input 
+                type="text" 
+                [(ngModel)]="duplicateFolderB"
+                placeholder="Folder B path..."
+                class="folder-input"
+              />
+              <button 
+                class="btn btn-secondary btn-small" 
+                (click)="browseDuplicateFolderB()"
+                [disabled]="isBrowsingDupB()"
+              >
+                {{ isBrowsingDupB() ? '⏳' : '📁' }}
+              </button>
+            </div>
+          </div>
+          
+          <div class="duplicates-actions">
+            <button 
+              class="btn btn-primary" 
+              (click)="findDuplicates(true)"
+              [disabled]="isFindingDuplicates() || !duplicateFolderA || !duplicateFolderB"
+            >
+              {{ isFindingDuplicates() ? '⏳ Checking...' : '🔍 Preview (Dry Run)' }}
+            </button>
+            <button 
+              class="btn btn-danger" 
+              (click)="findDuplicates(false)"
+              [disabled]="isFindingDuplicates() || !duplicateFolderA || !duplicateFolderB"
+            >
+              🗑️ Find & Delete
+            </button>
+          </div>
+        </div>
+        
+        <!-- Duplicates Result -->
+        <div class="duplicates-result" *ngIf="duplicatesResult">
+          <div class="result-summary" [class.success]="duplicatesResult.success" [class.error]="!duplicatesResult.success">
+            <span>{{ duplicatesResult.message }}</span>
+          </div>
+          
+          <div class="result-stats" *ngIf="duplicatesResult.success">
+            <span>📂 A: {{ duplicatesResult.folder_a_count }} files</span>
+            <span>📂 B: {{ duplicatesResult.folder_b_count }} files</span>
+            <span>🔄 Duplicates: {{ duplicatesResult.duplicates_found }}</span>
+            <span>🗑️ {{ duplicatesResult.dry_run ? 'Would remove' : 'Removed' }}: {{ duplicatesResult.removed_count }}</span>
+          </div>
+          
+          <!-- Duplicate Files List -->
+          <div class="duplicates-list" *ngIf="duplicatesResult.duplicates?.length > 0">
+            <div class="duplicate-item" *ngFor="let dup of duplicatesResult.duplicates">
+              <span class="dup-file-b">{{ dup.file_b_name }}</span>
+              <span class="dup-arrow">==</span>
+              <span class="dup-file-a">{{ dup.matches_with_name }}</span>
+            </div>
+          </div>
+          
+          <!-- Errors -->
+          <div class="duplicates-errors" *ngIf="duplicatesResult.errors?.length > 0">
+            <div class="error-item" *ngFor="let err of duplicatesResult.errors">⚠️ {{ err }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export Account Tool -->
+      <div class="card export-section">
+        <h3>📤 Export Account Tool</h3>
+        <p class="hint-text">ดึงไฟล์ account XML จาก device ที่เลือก และบันทึกเป็นไฟล์ใหม่</p>
+        
+        <!-- Device Preview Grid -->
+        <div class="device-preview-header">
+          <span>📱 Preview All Devices</span>
+          <button 
+            class="btn btn-secondary btn-small" 
+            (click)="refreshAllDeviceScreenshots()"
+            [disabled]="isRefreshingScreenshots()"
+          >
+            {{ isRefreshingScreenshots() ? '⏳ Loading...' : '🔄 Refresh All' }}
+          </button>
+        </div>
+        
+        <div class="device-preview-grid">
+          @for (preview of devicePreviews(); track preview.serial) {
+            <div 
+              class="device-preview-card"
+              [class.selected]="exportDeviceSerial === preview.serial"
+              [class.offline]="preview.status !== 'online'"
+              (click)="selectDeviceForExport(preview.serial)"
+            >
+              <div class="preview-header">
+                <span class="device-name">{{ preview.serial }}</span>
+                <span class="status-dot" [class.online]="preview.status === 'online'"></span>
+              </div>
+              <div class="preview-screen">
+                @if (preview.image) {
+                  <img [src]="preview.image" alt="Device screenshot" />
+                } @else if (preview.status !== 'online') {
+                  <div class="no-preview">🔴 Offline</div>
+                } @else {
+                  <div class="no-preview">📸 Click Refresh</div>
+                }
+              </div>
+              @if (exportDeviceSerial === preview.serial) {
+                <div class="selected-badge">✓ Selected</div>
+              }
+            </div>
+          }
+        </div>
+        
+        <div class="export-form">
+          <!-- Selected Device Info -->
+          <div class="folder-row" *ngIf="exportDeviceSerial">
+            <label>📱 Selected Device</label>
+            <div class="selected-device-info">
+              <span>{{ exportDeviceSerial }}</span>
+              <button class="btn-clear" (click)="exportDeviceSerial = ''">✕</button>
+            </div>
+          </div>
+          
+          <!-- Save Folder -->
+          <div class="folder-row">
+            <label>📂 Save to Folder</label>
+            <div class="folder-input-group">
+              <input 
+                type="text" 
+                [(ngModel)]="exportSaveFolder"
+                placeholder="Select folder to save..."
+                class="folder-input"
+              />
+              <button 
+                class="btn btn-secondary btn-small" 
+                (click)="browseExportFolder()"
+                [disabled]="isBrowsingExport()"
+              >
+                {{ isBrowsingExport() ? '⏳' : '📁' }}
+              </button>
+            </div>
+          </div>
+          
+          <!-- Filename -->
+          <div class="folder-row">
+            <label>📝 Filename</label>
+            <div class="filename-input-group">
+              <input 
+                type="text" 
+                [(ngModel)]="exportFilename"
+                placeholder="Enter filename (e.g., my_account)"
+                class="folder-input"
+              />
+              <span class="file-extension">.xml</span>
+            </div>
+          </div>
+          
+          <!-- Export Button -->
+          <div class="export-actions">
+            <button 
+              class="btn btn-success" 
+              (click)="exportAccount()"
+              [disabled]="isExporting() || !exportDeviceSerial || !exportSaveFolder || !exportFilename"
+            >
+              {{ isExporting() ? '⏳ Exporting...' : '💾 Export Account' }}
+            </button>
+          </div>
+        </div>
+        
+        <!-- Export Result -->
+        <div class="export-result" *ngIf="exportResult">
+          <div class="result-summary" [class.success]="exportResult.success" [class.error]="!exportResult.success">
+            <span>{{ exportResult.message }}</span>
+          </div>
+          <div class="export-path" *ngIf="exportResult.success && exportResult.filepath">
+            <span>📁 Saved to: {{ exportResult.filepath }}</span>
+          </div>
+        </div>
+      </div>
 
       <!-- Control Buttons -->
       <div class="control-section">
@@ -862,6 +1071,322 @@ interface DailyLoginStatus {
     .toggle-switch.active .toggle-slider {
       left: 27px;
     }
+
+    /* Find Duplicates Section */
+    .duplicates-section {
+      margin-top: 1rem;
+    }
+
+    .duplicates-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .folder-row {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .folder-row label {
+      font-size: 0.85rem;
+      color: #94a3b8;
+    }
+
+    .duplicates-actions {
+      display: flex;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+
+    .duplicates-result {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .result-summary {
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-weight: 500;
+      margin-bottom: 0.75rem;
+    }
+
+    .result-summary.success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #10b981;
+    }
+
+    .result-summary.error {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+    }
+
+    .result-stats {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 0.75rem;
+    }
+
+    .duplicates-list {
+      max-height: 200px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .duplicate-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 4px;
+      font-size: 0.8rem;
+    }
+
+    .dup-file-b {
+      color: #ef4444;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .dup-arrow {
+      color: #64748b;
+    }
+
+    .dup-file-a {
+      color: #10b981;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .duplicates-errors {
+      margin-top: 0.75rem;
+    }
+
+    .error-item {
+      padding: 0.5rem;
+      background: rgba(239, 68, 68, 0.1);
+      border-radius: 4px;
+      font-size: 0.8rem;
+      color: #ef4444;
+      margin-bottom: 0.25rem;
+    }
+
+    /* Export Account Section */
+    .export-section {
+      margin-top: 1rem;
+    }
+
+    .export-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .device-select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(0, 245, 255, 0.3);
+      border-radius: 8px;
+      color: white;
+      font-size: 0.9rem;
+      cursor: pointer;
+    }
+
+    .device-select:focus {
+      outline: none;
+      border-color: #00f5ff;
+      box-shadow: 0 0 10px rgba(0, 245, 255, 0.2);
+    }
+
+    .device-select option {
+      background: #1a1a2e;
+      color: white;
+    }
+
+    .filename-input-group {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .filename-input-group .folder-input {
+      flex: 1;
+    }
+
+    .file-extension {
+      color: #00f5ff;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+    }
+
+    .export-actions {
+      margin-top: 0.5rem;
+    }
+
+    .export-result {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 8px;
+    }
+
+    .export-path {
+      margin-top: 0.5rem;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      font-family: 'JetBrains Mono', monospace;
+      word-break: break-all;
+    }
+
+    /* Device Preview Grid */
+    .device-preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid rgba(0, 245, 255, 0.1);
+    }
+
+    .device-preview-header span {
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+
+    .device-preview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .device-preview-card {
+      background: rgba(0, 0, 0, 0.3);
+      border: 2px solid rgba(100, 100, 255, 0.2);
+      border-radius: 10px;
+      padding: 0.75rem;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+
+    .device-preview-card:hover:not(.offline) {
+      border-color: rgba(0, 245, 255, 0.4);
+      transform: translateY(-2px);
+    }
+
+    .device-preview-card.selected {
+      border-color: #00f5ff;
+      background: rgba(0, 245, 255, 0.1);
+      box-shadow: 0 0 15px rgba(0, 245, 255, 0.2);
+    }
+
+    .device-preview-card.offline {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .preview-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    .device-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #e2e8f0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ef4444;
+      flex-shrink: 0;
+    }
+
+    .status-dot.online {
+      background: #22c55e;
+    }
+
+    .preview-screen {
+      aspect-ratio: 9/16;
+      background: #0a0a0f;
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preview-screen img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+
+    .no-preview {
+      color: #64748b;
+      font-size: 0.75rem;
+      text-align: center;
+    }
+
+    .selected-badge {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #00f5ff;
+      color: #0a0a0f;
+      padding: 0.2rem 0.5rem;
+      border-radius: 10px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+
+    .selected-device-info {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      background: rgba(0, 245, 255, 0.1);
+      border: 1px solid rgba(0, 245, 255, 0.3);
+      border-radius: 8px;
+      color: #00f5ff;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .selected-device-info span {
+      flex: 1;
+    }
+
+    .btn-clear {
+      background: transparent;
+      border: none;
+      color: #ef4444;
+      cursor: pointer;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .btn-clear:hover {
+      background: rgba(239, 68, 68, 0.2);
+    }
   `]
 })
 export class DailyLoginComponent implements OnInit, OnDestroy {
@@ -896,10 +1421,31 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   };
   
   private statusInterval: any;
+  
+  // Find Duplicates properties
+  duplicateFolderA = '';
+  duplicateFolderB = '';
+  isBrowsingDupA = signal(false);
+  isBrowsingDupB = signal(false);
+  isFindingDuplicates = signal(false);
+  duplicatesResult: any = null;
 
+  // Export Account properties
+  exportDeviceSerial = '';
+  exportSaveFolder = '';
+  exportFilename = '';
+  isBrowsingExport = signal(false);
+  isExporting = signal(false);
+  exportResult: any = null;
+
+  // Device Preview properties
+  devicePreviews = signal<DevicePreview[]>([]);
+  isRefreshingScreenshots = signal(false);
+  
   ngOnInit(): void {
     this.refreshDevices();
     this.refreshStatus();
+    this.refreshAllDeviceScreenshots(); // Load device previews on init
     // Poll status every 2 seconds
     this.statusInterval = setInterval(() => this.refreshStatus(), 2000);
   }
@@ -1407,6 +1953,183 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     const timestamp = new Date().toLocaleTimeString();
     const logs = this.logs();
     this.logs.set([...logs.slice(-49), `[${timestamp}] ${message}`]);
+  }
+
+  // ===== Find Duplicates Methods =====
+
+  async browseDuplicateFolderA(): Promise<void> {
+    this.isBrowsingDupA.set(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/browse-folder');
+      const data = await response.json();
+      if (data.success && data.folder_path) {
+        this.duplicateFolderA = data.folder_path;
+        this.addLog(`📂 Folder A selected: ${data.folder_path}`);
+      }
+    } catch (error) {
+      console.error('Error browsing folder A:', error);
+    } finally {
+      this.isBrowsingDupA.set(false);
+    }
+  }
+
+  async browseDuplicateFolderB(): Promise<void> {
+    this.isBrowsingDupB.set(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/browse-folder');
+      const data = await response.json();
+      if (data.success && data.folder_path) {
+        this.duplicateFolderB = data.folder_path;
+        this.addLog(`📂 Folder B selected: ${data.folder_path}`);
+      }
+    } catch (error) {
+      console.error('Error browsing folder B:', error);
+    } finally {
+      this.isBrowsingDupB.set(false);
+    }
+  }
+
+  async findDuplicates(dryRun: boolean): Promise<void> {
+    if (!this.duplicateFolderA || !this.duplicateFolderB) {
+      this.addLog('⚠️ Please select both Folder A and Folder B');
+      return;
+    }
+
+    this.isFindingDuplicates.set(true);
+    this.duplicatesResult = null;
+    this.addLog(`🔍 ${dryRun ? 'Previewing' : 'Finding and deleting'} duplicates...`);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/daily-login/find-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          folder_a: this.duplicateFolderA,
+          folder_b: this.duplicateFolderB,
+          dry_run: dryRun
+        })
+      });
+
+      const result = await response.json();
+      this.duplicatesResult = result;
+
+      if (result.success) {
+        if (dryRun) {
+          this.addLog(`🔍 Preview: found ${result.duplicates_found} duplicates, ${result.removed_count} would be removed`);
+        } else {
+          this.addLog(`✅ Removed ${result.removed_count} duplicate files from Folder B`);
+        }
+      } else {
+        this.addLog(`❌ Error: ${result.errors?.join(', ') || 'Unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error finding duplicates:', error);
+      this.addLog(`❌ Error: ${error}`);
+      this.duplicatesResult = {
+        success: false,
+        message: `Error: ${error}`,
+        errors: [`${error}`]
+      };
+    } finally {
+      this.isFindingDuplicates.set(false);
+    }
+  }
+
+  // ===== Export Account Methods =====
+
+  async browseExportFolder(): Promise<void> {
+    this.isBrowsingExport.set(true);
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/browse-folder');
+      const data = await response.json();
+      if (data.success && data.folder_path) {
+        this.exportSaveFolder = data.folder_path;
+        this.addLog(`📂 Export folder selected: ${data.folder_path}`);
+      }
+    } catch (error) {
+      console.error('Error browsing export folder:', error);
+    } finally {
+      this.isBrowsingExport.set(false);
+    }
+  }
+
+  async exportAccount(): Promise<void> {
+    if (!this.exportDeviceSerial || !this.exportSaveFolder || !this.exportFilename) {
+      this.addLog('⚠️ Please fill in all fields');
+      return;
+    }
+
+    this.isExporting.set(true);
+    this.exportResult = null;
+    this.addLog(`📤 Exporting account from ${this.exportDeviceSerial}...`);
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/daily-login/export-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          save_folder: this.exportSaveFolder,
+          filename: this.exportFilename,
+          device_serial: this.exportDeviceSerial
+        })
+      });
+
+      const result = await response.json();
+      this.exportResult = result;
+
+      if (result.success) {
+        this.addLog(`✅ ${result.message}`);
+        // Clear filename for next export
+        this.exportFilename = '';
+      } else {
+        this.addLog(`❌ ${result.message}`);
+      }
+    } catch (error) {
+      console.error('Error exporting account:', error);
+      this.addLog(`❌ Error: ${error}`);
+      this.exportResult = {
+        success: false,
+        message: `Error: ${error}`
+      };
+    } finally {
+      this.isExporting.set(false);
+    }
+  }
+
+  // ===== Device Preview Methods =====
+
+  selectDeviceForExport(serial: string): void {
+    const previews = this.devicePreviews();
+    const device = previews.find(p => p.serial === serial);
+    if (device && device.status === 'online') {
+      this.exportDeviceSerial = serial;
+      this.addLog(`📱 Selected device: ${serial}`);
+    }
+  }
+
+  async refreshAllDeviceScreenshots(): Promise<void> {
+    this.isRefreshingScreenshots.set(true);
+    this.addLog('📸 Refreshing all device screenshots...');
+
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/devices/screenshots/all');
+      const data = await response.json();
+
+      if (data.success) {
+        const previews: DevicePreview[] = data.devices.map((d: any) => ({
+          serial: d.serial,
+          status: d.status,
+          image: d.success ? d.image : null
+        }));
+        this.devicePreviews.set(previews);
+        this.addLog(`✅ Loaded ${previews.length} device screenshots`);
+      }
+    } catch (error) {
+      console.error('Error refreshing screenshots:', error);
+      this.addLog(`❌ Error loading screenshots: ${error}`);
+    } finally {
+      this.isRefreshingScreenshots.set(false);
+    }
   }
 }
 

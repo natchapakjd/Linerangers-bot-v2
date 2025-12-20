@@ -760,3 +760,67 @@ async def mark_account_bugged(filename: str):
         message=f"Failed to delete {filename}"
     )
 
+
+class FindDuplicatesRequest(BaseModel):
+    folder_a: str  # Master folder - ถ้าเนื้อหาเหมือนกัน จะไม่ลบจาก folder นี้
+    folder_b: str  # Folder ที่จะลบไฟล์ซ้ำออก
+    dry_run: bool = True  # Default เป็น True เพื่อ preview ก่อนลบจริง
+
+
+@router.post("/daily-login/find-duplicates")
+async def find_duplicates(request: FindDuplicatesRequest):
+    """
+    เปรียบเทียบไฟล์ XML ระหว่าง folder A และ folder B
+    ถ้าพบว่าไฟล์ใน A มีเนื้อหาซ้ำกับไฟล์ใน B ให้ลบไฟล์นั้นออกจาก B
+    
+    - folder_a: Folder ต้นทาง (master) - ไม่ลบไฟล์จาก folder นี้
+    - folder_b: Folder ที่จะลบไฟล์ซ้ำออก
+    - dry_run: ถ้า True จะแค่แสดง preview ว่าจะลบอะไรบ้าง (default)
+    """
+    service = get_daily_login_service()
+    result = service.find_duplicates_and_remove(
+        folder_a=request.folder_a,
+        folder_b=request.folder_b,
+        dry_run=request.dry_run
+    )
+    
+    return {
+        "success": len(result["errors"]) == 0,
+        "dry_run": result["dry_run"],
+        "folder_a_count": result["folder_a_count"],
+        "folder_b_count": result["folder_b_count"],
+        "duplicates_found": len(result["duplicates"]),
+        "removed_count": result["removed_count"],
+        "duplicates": result["duplicates"],
+        "errors": result["errors"],
+        "message": f"{'Preview: ' if result['dry_run'] else ''}Found {len(result['duplicates'])} duplicates, {'would remove' if result['dry_run'] else 'removed'} {result['removed_count']} files from Folder B"
+    }
+
+
+class ExportAccountRequest(BaseModel):
+    save_folder: str  # Folder ที่จะบันทึกไฟล์
+    filename: str     # ชื่อไฟล์ที่ต้องการ
+    device_serial: str = None  # Optional: device ที่จะดึงข้อมูล
+
+
+@router.post("/daily-login/export-account")
+async def export_account(request: ExportAccountRequest):
+    """
+    ดึงไฟล์ account XML จาก device และบันทึกเป็นไฟล์ใหม่
+    
+    - save_folder: Folder ที่จะบันทึกไฟล์
+    - filename: ชื่อไฟล์ที่ต้องการ (เช่น "my_account" หรือ "my_account.xml")
+    - device_serial: Serial ของ device (optional, ใช้ default ถ้าไม่ระบุ)
+    """
+    service = get_daily_login_service()
+    result = service.export_account(
+        save_folder=request.save_folder,
+        filename=request.filename,
+        device_serial=request.device_serial
+    )
+    
+    return {
+        "success": result["success"],
+        "filepath": result["filepath"],
+        "message": result["message"]
+    }
