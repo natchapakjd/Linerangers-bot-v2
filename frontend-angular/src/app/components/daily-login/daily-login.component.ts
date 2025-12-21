@@ -17,6 +17,7 @@ interface AccountInfo {
   processed: boolean;
   success: boolean;
   error_message: string;
+  running_on_device?: string;  // Shows which device is processing this account
 }
 
 interface DailyLoginStatus {
@@ -143,7 +144,7 @@ interface DevicePreview {
           <div 
             *ngFor="let account of status().accounts; let i = index" 
             class="account-item"
-            [class.processing]="status().current_account === account.filename"
+            [class.processing]="account.running_on_device"
             [class.success]="account.processed && account.success"
             [class.failed]="account.processed && !account.success"
           >
@@ -152,6 +153,10 @@ interface DevicePreview {
               {{ getAccountIcon(account) }}
             </span>
             <span class="account-name">{{ account.filename }}</span>
+            <!-- Show device serial if running -->
+            <span class="device-badge" *ngIf="account.running_on_device">
+              📱 {{ account.running_on_device }}
+            </span>
             <span class="account-status" *ngIf="account.processed">
               {{ account.success ? '✓' : '✗' }}
             </span>
@@ -880,6 +885,17 @@ interface DevicePreview {
       cursor: not-allowed;
     }
 
+    .device-badge {
+      background: rgba(139, 92, 246, 0.2);
+      border: 1px solid rgba(139, 92, 246, 0.4);
+      padding: 0.15rem 0.5rem;
+      border-radius: 12px;
+      font-size: 0.7rem;
+      color: #a78bfa;
+      font-family: 'JetBrains Mono', monospace;
+      white-space: nowrap;
+    }
+
     /* Settings */
     .settings-grid {
       display: grid;
@@ -1442,12 +1458,61 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   devicePreviews = signal<DevicePreview[]>([]);
   isRefreshingScreenshots = signal(false);
   
+  private readonly STORAGE_KEY = 'daily_login_state';
+  
   ngOnInit(): void {
+    this.loadStateFromStorage(); // Load saved state first
     this.refreshDevices();
     this.refreshStatus();
     this.refreshAllDeviceScreenshots(); // Load device previews on init
     // Poll status every 2 seconds
     this.statusInterval = setInterval(() => this.refreshStatus(), 2000);
+  }
+
+  // ===== State Persistence =====
+  
+  private loadStateFromStorage(): void {
+    try {
+      const saved = localStorage.getItem(this.STORAGE_KEY);
+      if (saved) {
+        const state = JSON.parse(saved);
+        
+        // Restore folder paths
+        this.folderPath = state.folderPath || '';
+        this.duplicateFolderA = state.duplicateFolderA || '';
+        this.duplicateFolderB = state.duplicateFolderB || '';
+        this.exportSaveFolder = state.exportSaveFolder || '';
+        this.exportDeviceSerial = state.exportDeviceSerial || '';
+        
+        // Restore settings
+        if (state.settings) {
+          this.settings = {
+            ...this.settings,
+            ...state.settings
+          };
+        }
+        
+        console.log('✅ State loaded from localStorage');
+      }
+    } catch (error) {
+      console.error('Error loading state from localStorage:', error);
+    }
+  }
+  
+  private saveStateToStorage(): void {
+    try {
+      const state = {
+        folderPath: this.folderPath,
+        duplicateFolderA: this.duplicateFolderA,
+        duplicateFolderB: this.duplicateFolderB,
+        exportSaveFolder: this.exportSaveFolder,
+        exportDeviceSerial: this.exportDeviceSerial,
+        settings: this.settings
+      };
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
+    } catch (error) {
+      console.error('Error saving state to localStorage:', error);
+    }
   }
 
   // ===== Device Management =====
@@ -1965,6 +2030,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
       if (data.success && data.folder_path) {
         this.duplicateFolderA = data.folder_path;
         this.addLog(`📂 Folder A selected: ${data.folder_path}`);
+        this.saveStateToStorage();
       }
     } catch (error) {
       console.error('Error browsing folder A:', error);
@@ -1981,6 +2047,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
       if (data.success && data.folder_path) {
         this.duplicateFolderB = data.folder_path;
         this.addLog(`📂 Folder B selected: ${data.folder_path}`);
+        this.saveStateToStorage();
       }
     } catch (error) {
       console.error('Error browsing folder B:', error);
@@ -2045,6 +2112,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
       if (data.success && data.folder_path) {
         this.exportSaveFolder = data.folder_path;
         this.addLog(`📂 Export folder selected: ${data.folder_path}`);
+        this.saveStateToStorage();
       }
     } catch (error) {
       console.error('Error browsing export folder:', error);
@@ -2104,6 +2172,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     if (device && device.status === 'online') {
       this.exportDeviceSerial = serial;
       this.addLog(`📱 Selected device: ${serial}`);
+      this.saveStateToStorage();
     }
   }
 

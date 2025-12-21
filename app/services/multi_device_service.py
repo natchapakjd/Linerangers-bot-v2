@@ -438,6 +438,35 @@ class MultiDeviceOrchestrator:
     
     def get_status(self) -> dict:
         """Get current status of multi-device processing."""
+        # Build map of which device is running which account
+        account_device_map = {}
+        for progress in self._device_progress.values():
+            if progress.current_account:
+                account_device_map[progress.current_account] = progress.serial
+        
+        # Get accounts with device info
+        accounts_status = []
+        current_accounts = []
+        other_accounts = []
+        
+        for acc in self.queue._accounts:
+            account_info = {
+                "filename": acc.filename,
+                "processed": acc.processed,
+                "success": acc.success,
+                "error_message": acc.error_message,
+                "running_on_device": account_device_map.get(acc.filename, None)
+            }
+            
+            # Separate current (running) accounts from others
+            if acc.filename in account_device_map:
+                current_accounts.append(account_info)
+            else:
+                other_accounts.append(account_info)
+        
+        # Put current accounts first, then others
+        accounts_status = current_accounts + other_accounts
+        
         return {
             "state": self._state.value,
             "folder_path": self.queue._folder_path,
@@ -457,7 +486,7 @@ class MultiDeviceOrchestrator:
                 }
                 for p in self._device_progress.values()
             ],
-            "accounts": self.queue.get_accounts_status()
+            "accounts": accounts_status
         }
 
 

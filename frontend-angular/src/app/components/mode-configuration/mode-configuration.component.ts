@@ -36,10 +36,10 @@ export class ModeConfigurationComponent implements OnInit {
   // Mode configurations
   modes: ModeConfig[] = [
     { mode_name: 'daily-login', label: 'Daily Login', description: 'สแกนไฟล์ XML → รันเกม → Claim rewards → ปิดเกม', icon: '📅' },
-    { mode_name: 'stage-farm', label: 'Stage Farm', description: 'ฟาร์มด่านอัตโนมัติ', icon: '⚔️' },
-    { mode_name: 'gai-ruby', label: 'Gai Ruby', description: 'เก็บรูบี้อัตโนมัติ', icon: '💎' },
-    { mode_name: 'event', label: 'Event', description: 'กิจกรรมพิเศษ', icon: '🎉' },
-    { mode_name: 'custom', label: 'Custom', description: 'กำหนดเอง', icon: '🔧' }
+    // { mode_name: 'stage-farm', label: 'Stage Farm', description: 'ฟาร์มด่านอัตโนมัติ', icon: '⚔️' },
+    // { mode_name: 'gai-ruby', label: 'Gai Ruby', description: 'เก็บรูบี้อัตโนมัติ', icon: '💎' },
+    // { mode_name: 'event', label: 'Event', description: 'กิจกรรมพิเศษ', icon: '🎉' },
+    // { mode_name: 'custom', label: 'Custom', description: 'กำหนดเอง', icon: '🔧' }
   ];
   
   // Current month/year
