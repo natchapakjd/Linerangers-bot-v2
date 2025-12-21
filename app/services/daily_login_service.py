@@ -664,6 +664,95 @@ class DailyLoginService:
                     self.adb.press_key("KEYCODE_BACK")
                     self._wait(0.5)
                 
+                elif step_type == "repeat_group":
+                    # Repeat a group of steps until stop condition is met
+                    loop_group_name = step.get("loop_group_name")
+                    stop_template_path = step.get("stop_template_path")
+                    stop_on_not_found = step.get("stop_on_not_found", True)
+                    loop_max_iterations = step.get("loop_max_iterations", 100)
+                    threshold = step.get("threshold", 0.8)
+                    
+                    if not loop_group_name:
+                        self._emit_log(f"    ⚠️ repeat_group missing loop_group_name")
+                        step_index += 1
+                        continue
+                    
+                    # Collect steps that belong to the group
+                    group_steps = [s for s in self.workflow_steps if s.get("group_name") == loop_group_name]
+                    
+                    if not group_steps:
+                        self._emit_log(f"    ⚠️ No steps found with group_name '{loop_group_name}'")
+                        step_index += 1
+                        continue
+                    
+                    self._emit_log(f"    🔄 repeat_group: {len(group_steps)} steps in '{loop_group_name}'")
+                    
+                    iteration = 0
+                    while iteration < loop_max_iterations and not self._stop_event.is_set():
+                        iteration += 1
+                        self._emit_log(f"    === Loop #{iteration}/{loop_max_iterations} ===")
+                        
+                        # Execute all steps in the group
+                        for group_step in group_steps:
+                            if self._stop_event.is_set():
+                                break
+                            
+                            gs_type = group_step.get("step_type", "")
+                            
+                            if gs_type == "click":
+                                self.adb.tap(group_step.get("x", 0), group_step.get("y", 0))
+                                self._wait(0.3)
+                            
+                            elif gs_type == "swipe":
+                                self.adb.swipe(
+                                    group_step.get("x", 0), group_step.get("y", 0),
+                                    group_step.get("end_x", 0), group_step.get("end_y", 0),
+                                    group_step.get("swipe_duration_ms", 300)
+                                )
+                                self._wait(0.5)
+                            
+                            elif gs_type == "wait":
+                                self._wait(group_step.get("wait_duration_ms", 1000) / 1000)
+                            
+                            elif gs_type == "image_match":
+                                success = self._execute_image_step(group_step, find_all=False)
+                                if not success and not group_step.get("skip_if_not_found", False):
+                                    self._emit_log(f"      ❌ Image not found in group")
+                            
+                            elif gs_type == "wait_for_color":
+                                expected = group_step.get("expected_color")
+                                if expected:
+                                    self._execute_wait_for_color_step(group_step)
+                            
+                            elif gs_type == "press_back":
+                                self.adb.press_key("KEYCODE_BACK")
+                                self._wait(0.5)
+                            
+                            elif gs_type == "gacha_check":
+                                # OCR check for gacha character
+                                self._execute_gacha_check_step(group_step, iteration)
+                        
+                        # Check stop condition AFTER running all group steps
+                        if stop_template_path:
+                            screen = self.adb.screenshot()
+                            if screen is not None:
+                                result = self.template_service.find_template_fast(screen, stop_template_path, threshold)
+                                template_found = result is not None
+                                
+                                should_stop = (stop_on_not_found and not template_found) or (not stop_on_not_found and template_found)
+                                
+                                if should_stop:
+                                    self._emit_log(f"    ✅ Stop condition met, exiting loop")
+                                    break
+                                else:
+                                    self._emit_log(f"    🔄 Continuing to next iteration...")
+                    
+                    self._emit_log(f"    ✅ repeat_group completed after {iteration} iterations")
+                
+                elif step_type == "gacha_check":
+                    # Standalone gacha_check 
+                    self._execute_gacha_check_step(step, 1)
+                
                 else:
                     self._emit_log(f"    ⚠️ Unknown step type: {step_type}, skipping...")
                 
@@ -676,6 +765,88 @@ class DailyLoginService:
         
         self._emit_log(f"  ✅ Workflow completed successfully")
         return True
+    
+    def _execute_gacha_check_step(self, step: dict, iteration: int = 1):
+        """Execute gacha check with OCR."""
+        from app.services.ocr_service import get_ocr_service
+        from pathlib import Path
+        from datetime import datetime
+        
+        self._emit_log(f"      🔍 === GACHA CHECK (Iteration #{iteration}) ===")
+        
+        ocr_service = get_ocr_service()
+        
+        # Check if Tesseract is available
+        if not ocr_service.is_available():
+            self._emit_log(f"      ❌ Tesseract OCR not installed!")
+            return False
+        
+        target_chars = step.get("target_characters", [])
+        save_folder = step.get("gacha_save_folder", "")
+        ocr_region = step.get("ocr_region")
+        
+        self._emit_log(f"      Target: {target_chars}")
+        self._emit_log(f"      Save folder: {save_folder}")
+        self._emit_log(f"      OCR Region: {ocr_region}")
+        
+        if not target_chars:
+            self._emit_log(f"      ⚠️ No target characters configured!")
+            return False
+        
+        screen = self.adb.screenshot()
+        if screen is None:
+            self._emit_log(f"      ❌ Screenshot failed!")
+            return False
+        
+        # Use ocr_region if available, otherwise full screen
+        if ocr_region:
+            region_tuple = (
+                ocr_region.get("x", 320),
+                ocr_region.get("y", 140),
+                ocr_region.get("width", 320),
+                ocr_region.get("height", 60)
+            )
+            self._emit_log(f"      📷 Running OCR on region {region_tuple}...")
+            text = ocr_service.extract_text(screen, region=region_tuple)
+        else:
+            self._emit_log(f"      📷 Running OCR on FULL SCREEN...")
+            text = ocr_service.extract_text(screen, region=None)
+        
+        display_text = text[:100] if len(text) > 100 else text
+        self._emit_log(f"      📝 OCR Result: '{display_text}'")
+        
+        # Check if matches any target
+        matched = ocr_service.fuzzy_match(text, target_chars, threshold=0.6)
+        if matched:
+            self._emit_log(f"      ✅✅✅ GACHA MATCH! Character: {matched} ✅✅✅")
+            
+            # Export XML
+            if save_folder:
+                timestamp = datetime.now().strftime("%Y%m%d")
+                clean_name = matched.replace(" ", "_").replace("/", "_")
+                filename = f"{clean_name}_{timestamp}_LINE_COCOS_PREF_KEY.xml"
+                
+                self._emit_log(f"      💾 Exporting XML to: {save_folder}/{filename}")
+                
+                temp_path = "/sdcard/_temp_gacha_export.xml"
+                
+                self.adb.shell_su(f"cp {LINERANGERS_PREF_PATH} {temp_path}")
+                self.adb.shell_su(f"chmod 644 {temp_path}")
+                
+                output_path = Path(save_folder) / filename
+                if self.adb.pull_file(temp_path, str(output_path)):
+                    self._emit_log(f"      ✅ Exported successfully: {output_path}")
+                else:
+                    self._emit_log(f"      ❌ Failed to export XML!")
+                
+                self.adb.shell(f"rm {temp_path}")
+            else:
+                self._emit_log(f"      ⚠️ No save folder configured")
+            
+            return True
+        else:
+            self._emit_log(f"      ❌ No match. OCR: '{display_text}' vs Targets: {target_chars}")
+            return False
     
     def _execute_image_step(self, step: dict, find_all: bool = False) -> bool:
         """Execute an image matching step with retry logic."""

@@ -1817,8 +1817,13 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       step.not_found_threshold = 3;
       step.click_delay = 1.5;
       step.retry_delay = 2;
+    } else if (type === 'gacha_check') {
+      step.ocr_region = { x: 320, y: 140, width: 320, height: 60 };
+      step.target_characters = [];
+      step.target_characters_text = '';
+      step.gacha_save_folder = '';
+      step.description = 'OCR check for gacha character';
     }
-
 
     // Create new array reference to trigger change detection
     this.currentWorkflow.steps = [...this.currentWorkflow.steps, step];

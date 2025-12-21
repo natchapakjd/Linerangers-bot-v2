@@ -282,9 +282,21 @@ class WorkflowService:
         steps = workflow_data.get("steps", [])
         step_index = 0
         
+        # Collect group names that have a repeat_group step
+        repeat_groups = set()
+        for s in steps:
+            if s.get("step_type") == "repeat_group" and s.get("loop_group_name"):
+                repeat_groups.add(s.get("loop_group_name"))
+        
         while step_index < len(steps):
             step = steps[step_index]
             step_type = step["step_type"]
+            
+            # Skip steps that belong to a repeat_group - they'll be executed in the loop
+            group_name = step.get("group_name")
+            if group_name and group_name in repeat_groups and step_type != "repeat_group":
+                step_index += 1
+                continue
             
             try:
                 if step_type == "click":
@@ -583,31 +595,6 @@ class WorkflowService:
                         iteration += 1
                         print(f"[DEBUG] === Loop iteration #{iteration}/{loop_max_iterations} ===")
                         
-                        # Check stop condition BEFORE running group
-                        if stop_template_path:
-                            screenshot = adb.screenshot()
-                            if screenshot is not None:
-                                result = template_service.find_template_fast(
-                                    screenshot,
-                                    stop_template_path,
-                                    threshold
-                                )
-                                template_found = result is not None
-                                
-                                should_stop = (stop_on_not_found and not template_found) or (not stop_on_not_found and template_found)
-                                
-                                if should_stop:
-                                    if stop_on_not_found:
-                                        print(f"[DEBUG] ✅ Stop condition met: template NOT found, exiting loop")
-                                    else:
-                                        print(f"[DEBUG] ✅ Stop condition met: template FOUND, exiting loop")
-                                    break
-                                else:
-                                    if stop_on_not_found:
-                                        print(f"[DEBUG] Template still found, continuing loop...")
-                                    else:
-                                        print(f"[DEBUG] Template not found yet, continuing loop...")
-                        
                         # Execute all steps in the group
                         for group_step in group_steps:
                             group_step_type = group_step["step_type"]
@@ -672,17 +659,14 @@ class WorkflowService:
                                         print(f"[DEBUG] Please install from: https://github.com/UB-Mannheim/tesseract/wiki")
                                         continue
                                     
-                                    ocr_region = group_step.get("ocr_region", {})
                                     target_chars = group_step.get("target_characters", [])
                                     save_folder = group_step.get("gacha_save_folder", "")
+                                    ocr_region = group_step.get("ocr_region")
                                     
-                                    print(f"[DEBUG] OCR Region: x={ocr_region.get('x')}, y={ocr_region.get('y')}, w={ocr_region.get('width')}, h={ocr_region.get('height')}")
                                     print(f"[DEBUG] Target characters: {target_chars}")
                                     print(f"[DEBUG] Save folder: {save_folder}")
+                                    print(f"[DEBUG] OCR Region: {ocr_region}")
                                     
-                                    if not ocr_region:
-                                        print(f"[DEBUG] ⚠️ No OCR region configured!")
-                                        continue
                                     if not target_chars:
                                         print(f"[DEBUG] ⚠️ No target characters configured!")
                                         continue
@@ -692,19 +676,21 @@ class WorkflowService:
                                         print(f"[DEBUG] ❌ Failed to capture screenshot!")
                                         continue
                                     
-                                    print(f"[DEBUG] 📷 Screenshot captured, running OCR...")
-                                    
-                                    # Extract text from region
-                                    text = ocr_service.extract_text(
-                                        screenshot,
-                                        region=(
+                                    # Use ocr_region if available, otherwise full screen
+                                    if ocr_region:
+                                        region_tuple = (
                                             ocr_region.get("x", 320),
                                             ocr_region.get("y", 140),
                                             ocr_region.get("width", 320),
                                             ocr_region.get("height", 60)
                                         )
-                                    )
-                                    print(f"[DEBUG] 📝 OCR Result: '{text}'")
+                                        print(f"[DEBUG] 📷 Screenshot captured ({screenshot.shape}), running OCR on region {region_tuple}...")
+                                        text = ocr_service.extract_text(screenshot, region=region_tuple)
+                                    else:
+                                        print(f"[DEBUG] 📷 Screenshot captured ({screenshot.shape}), running OCR on FULL SCREEN...")
+                                        text = ocr_service.extract_text(screenshot, region=None)
+                                    
+                                    print(f"[DEBUG] 📝 OCR Result: '{text[:200] if len(text) > 200 else text}'")
                                     
                                     # Check if matches any target
                                     matched = ocr_service.fuzzy_match(text, target_chars, threshold=0.6)
@@ -753,6 +739,31 @@ class WorkflowService:
                             except Exception as e:
                                 print(f"[DEBUG] Error in group step: {e}")
                                 # Continue with next step in group
+                        
+                        # Check stop condition AFTER running all group steps
+                        if stop_template_path:
+                            screenshot = adb.screenshot()
+                            if screenshot is not None:
+                                result = template_service.find_template_fast(
+                                    screenshot,
+                                    stop_template_path,
+                                    threshold
+                                )
+                                template_found = result is not None
+                                
+                                should_stop = (stop_on_not_found and not template_found) or (not stop_on_not_found and template_found)
+                                
+                                if should_stop:
+                                    if stop_on_not_found:
+                                        print(f"[DEBUG] ✅ Stop condition met: template NOT found, exiting loop")
+                                    else:
+                                        print(f"[DEBUG] ✅ Stop condition met: template FOUND, exiting loop")
+                                    break
+                                else:
+                                    if stop_on_not_found:
+                                        print(f"[DEBUG] Template still found, continuing to next iteration...")
+                                    else:
+                                        print(f"[DEBUG] Template not found yet, continuing to next iteration...")
                     
                     if iteration >= loop_max_iterations:
                         print(f"[DEBUG] ⚠️ Reached max iterations ({loop_max_iterations})")
