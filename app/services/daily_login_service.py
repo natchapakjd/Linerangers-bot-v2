@@ -477,6 +477,9 @@ class DailyLoginService:
     
     def _process_account(self, account: AccountInfo) -> bool:
         """Process a single account - close game, push XML, restart game, claim rewards."""
+        # Track current account filepath for gacha_check to delete if matched
+        self._current_account_filepath = account.filepath
+        
         # Step 1: Force stop game FIRST (ensure clean state)
         self._emit_log(f"  ⏹️ Closing Line Rangers...")
         self.adb.force_stop_app(LINERANGERS_PACKAGE)
@@ -836,6 +839,21 @@ class DailyLoginService:
                 output_path = Path(save_folder) / filename
                 if self.adb.pull_file(temp_path, str(output_path)):
                     self._emit_log(f"      ✅ Exported successfully: {output_path}")
+                    
+                    # Delete original account file from source folder
+                    if hasattr(self, '_current_account_filepath') and self._current_account_filepath:
+                        try:
+                            import os
+                            original_file = Path(self._current_account_filepath)
+                            if original_file.exists():
+                                os.remove(str(original_file))
+                                self._emit_log(f"      🗑️ Deleted original file: {original_file.name}")
+                                logger.info(f"Deleted original account file: {original_file}")
+                            else:
+                                self._emit_log(f"      ⚠️ Original file not found: {original_file}")
+                        except Exception as e:
+                            self._emit_log(f"      ⚠️ Failed to delete original: {e}")
+                            logger.error(f"Failed to delete original account file: {e}")
                 else:
                     self._emit_log(f"      ❌ Failed to export XML!")
                 
