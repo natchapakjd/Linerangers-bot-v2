@@ -662,56 +662,87 @@ class WorkflowService:
                                     from app.services.ocr_service import get_ocr_service
                                     from datetime import datetime
                                     
+                                    print(f"[DEBUG] 🔍 === GACHA CHECK (Iteration #{iteration}) ===")
+                                    
                                     ocr_service = get_ocr_service()
+                                    
+                                    # Check if Tesseract is available
+                                    if not ocr_service.is_available():
+                                        print(f"[DEBUG] ❌ Tesseract OCR is NOT installed or not found!")
+                                        print(f"[DEBUG] Please install from: https://github.com/UB-Mannheim/tesseract/wiki")
+                                        continue
+                                    
                                     ocr_region = group_step.get("ocr_region", {})
                                     target_chars = group_step.get("target_characters", [])
                                     save_folder = group_step.get("gacha_save_folder", "")
                                     
-                                    if ocr_region and target_chars:
-                                        screenshot = adb.screenshot()
-                                        if screenshot is not None:
-                                            # Extract text from region
-                                            text = ocr_service.extract_text(
-                                                screenshot,
-                                                region=(
-                                                    ocr_region.get("x", 320),
-                                                    ocr_region.get("y", 140),
-                                                    ocr_region.get("width", 320),
-                                                    ocr_region.get("height", 60)
-                                                )
-                                            )
-                                            print(f"[DEBUG] OCR extracted: '{text}'")
+                                    print(f"[DEBUG] OCR Region: x={ocr_region.get('x')}, y={ocr_region.get('y')}, w={ocr_region.get('width')}, h={ocr_region.get('height')}")
+                                    print(f"[DEBUG] Target characters: {target_chars}")
+                                    print(f"[DEBUG] Save folder: {save_folder}")
+                                    
+                                    if not ocr_region:
+                                        print(f"[DEBUG] ⚠️ No OCR region configured!")
+                                        continue
+                                    if not target_chars:
+                                        print(f"[DEBUG] ⚠️ No target characters configured!")
+                                        continue
+                                    
+                                    screenshot = adb.screenshot()
+                                    if screenshot is None:
+                                        print(f"[DEBUG] ❌ Failed to capture screenshot!")
+                                        continue
+                                    
+                                    print(f"[DEBUG] 📷 Screenshot captured, running OCR...")
+                                    
+                                    # Extract text from region
+                                    text = ocr_service.extract_text(
+                                        screenshot,
+                                        region=(
+                                            ocr_region.get("x", 320),
+                                            ocr_region.get("y", 140),
+                                            ocr_region.get("width", 320),
+                                            ocr_region.get("height", 60)
+                                        )
+                                    )
+                                    print(f"[DEBUG] 📝 OCR Result: '{text}'")
+                                    
+                                    # Check if matches any target
+                                    matched = ocr_service.fuzzy_match(text, target_chars, threshold=0.6)
+                                    if matched:
+                                        print(f"[DEBUG] ✅✅✅ GACHA MATCH! Character: {matched} ✅✅✅")
+                                        
+                                        # Export XML
+                                        if save_folder:
+                                            timestamp = datetime.now().strftime("%Y%m%d")
+                                            # Clean character name for filename
+                                            clean_name = matched.replace(" ", "_").replace("/", "_")
+                                            filename = f"{clean_name}_{timestamp}_LINE_COCOS_PREF_KEY.xml"
                                             
-                                            # Check if matches any target
-                                            matched = ocr_service.fuzzy_match(text, target_chars, threshold=0.6)
-                                            if matched:
-                                                print(f"[DEBUG] ✅ GACHA MATCH! Character: {matched}")
-                                                
-                                                # Export XML
-                                                if save_folder:
-                                                    timestamp = datetime.now().strftime("%Y%m%d")
-                                                    # Clean character name for filename
-                                                    clean_name = matched.replace(" ", "_").replace("/", "_")
-                                                    filename = f"{clean_name}_{timestamp}_LINE_COCOS_PREF_KEY.xml"
-                                                    
-                                                    from app.services.daily_login_service import LINERANGERS_PREF_PATH
-                                                    temp_path = "/sdcard/_temp_gacha_export.xml"
-                                                    
-                                                    # Copy and pull file
-                                                    adb.shell_su(f"cp {LINERANGERS_PREF_PATH} {temp_path}")
-                                                    adb.shell_su(f"chmod 644 {temp_path}")
-                                                    
-                                                    output_path = Path(save_folder) / filename
-                                                    if adb.pull_file(temp_path, str(output_path)):
-                                                        print(f"[DEBUG] ✅ Exported: {output_path}")
-                                                    else:
-                                                        print(f"[DEBUG] ❌ Failed to export XML")
-                                                    
-                                                    adb.shell(f"rm {temp_path}")
-                                                
-                                                # Set flag to stop the repeat_group loop
-                                                # We use a special return mechanism
-                                                raise StopIteration("GACHA_MATCH")
+                                            print(f"[DEBUG] 💾 Exporting XML to: {save_folder}/{filename}")
+                                            
+                                            from app.services.daily_login_service import LINERANGERS_PREF_PATH
+                                            temp_path = "/sdcard/_temp_gacha_export.xml"
+                                            
+                                            # Copy and pull file
+                                            adb.shell_su(f"cp {LINERANGERS_PREF_PATH} {temp_path}")
+                                            adb.shell_su(f"chmod 644 {temp_path}")
+                                            
+                                            output_path = Path(save_folder) / filename
+                                            if adb.pull_file(temp_path, str(output_path)):
+                                                print(f"[DEBUG] ✅ Exported successfully: {output_path}")
+                                            else:
+                                                print(f"[DEBUG] ❌ Failed to export XML!")
+                                            
+                                            adb.shell(f"rm {temp_path}")
+                                        else:
+                                            print(f"[DEBUG] ⚠️ No save folder configured, skipping export")
+                                        
+                                        # Set flag to stop the repeat_group loop
+                                        # We use a special return mechanism
+                                        raise StopIteration("GACHA_MATCH")
+                                    else:
+                                        print(f"[DEBUG] ❌ No match found. OCR: '{text}' vs Targets: {target_chars}")
+                                        print(f"[DEBUG] Continuing to next iteration...")
                                     
                             except StopIteration as e:
                                 if str(e) == "GACHA_MATCH":
