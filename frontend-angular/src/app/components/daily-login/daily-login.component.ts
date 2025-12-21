@@ -2025,7 +2025,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   async browseDuplicateFolderA(): Promise<void> {
     this.isBrowsingDupA.set(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/browse-folder');
+      const response = await fetch('/api/v1/browse-folder');
       const data = await response.json();
       if (data.success && data.folder_path) {
         this.duplicateFolderA = data.folder_path;
@@ -2042,7 +2042,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   async browseDuplicateFolderB(): Promise<void> {
     this.isBrowsingDupB.set(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/browse-folder');
+      const response = await fetch('/api/v1/browse-folder');
       const data = await response.json();
       if (data.success && data.folder_path) {
         this.duplicateFolderB = data.folder_path;
@@ -2067,7 +2067,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     this.addLog(`🔍 ${dryRun ? 'Previewing' : 'Finding and deleting'} duplicates...`);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/daily-login/find-duplicates', {
+      const response = await fetch('/api/v1/daily-login/find-duplicates', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2107,7 +2107,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
   async browseExportFolder(): Promise<void> {
     this.isBrowsingExport.set(true);
     try {
-      const response = await fetch('http://localhost:8000/api/v1/browse-folder');
+      const response = await fetch('/api/v1/browse-folder');
       const data = await response.json();
       if (data.success && data.folder_path) {
         this.exportSaveFolder = data.folder_path;
@@ -2132,7 +2132,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     this.addLog(`📤 Exporting account from ${this.exportDeviceSerial}...`);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/daily-login/export-account', {
+      const response = await fetch('/api/v1/daily-login/export-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2181,7 +2181,7 @@ export class DailyLoginComponent implements OnInit, OnDestroy {
     this.addLog('📸 Refreshing all device screenshots...');
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/devices/screenshots/all');
+      const response = await fetch('/api/v1/devices/screenshots/all');
       const data = await response.json();
 
       if (data.success) {

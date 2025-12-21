@@ -43,3 +43,14 @@ RATE_LIMIT_LOGIN = int(os.getenv("RATE_LIMIT_LOGIN", "5"))
 RATE_LIMIT_LICENSE = int(os.getenv("RATE_LIMIT_LICENSE", "10"))
 RATE_LIMIT_GLOBAL = int(os.getenv("RATE_LIMIT_GLOBAL", "100"))
 
+# ===== License Settings =====
+# Set to True to bypass license check (for development/testing)
+# TODO: Set to False and implement online license server for production
+LICENSE_BYPASS = os.getenv("LICENSE_BYPASS", "true").lower() == "true"
+
+# Online License Server (for future use)
+LICENSE_SERVER_URL = os.getenv("LICENSE_SERVER_URL", "")  # e.g., "https://your-license-server.com/api"
+
+# ===== Build Mode =====
+# Set to True when building for distribution
+IS_PRODUCTION_BUILD = os.getenv("IS_PRODUCTION_BUILD", "false").lower() == "true"

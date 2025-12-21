@@ -13,6 +13,7 @@ from loguru import logger
 
 from app.core.database import async_session_maker
 from app.models.license import License
+from app.config import LICENSE_BYPASS
 
 
 class LicenseService:
@@ -231,6 +232,11 @@ class LicenseService:
         Returns:
             True if there's an active, non-expired license bound to this hardware.
         """
+        # Bypass license check if configured (for development/testing)
+        if LICENSE_BYPASS:
+            logger.debug("License bypass enabled - skipping license check")
+            return True
+        
         async with async_session_maker() as session:
             result = await session.execute(
                 select(License).where(License.hardware_id == hardware_id)

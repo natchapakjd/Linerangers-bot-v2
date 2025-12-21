@@ -13,3 +13,8 @@ passlib[bcrypt]
 bcrypt
 pyngrok
 qrcode[pil]
+slowapi
+python-dotenv
+pyinstaller
+pytesseract
+pillow

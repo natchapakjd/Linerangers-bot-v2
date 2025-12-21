@@ -66,18 +66,58 @@ app.include_router(template_set_router)
 app.include_router(mode_config_router)
 
 # Serve static files (frontend)
-FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
-if FRONTEND_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
+# Handle both development and PyInstaller bundled paths
+def get_frontend_dir():
+    """Get frontend directory, handling PyInstaller bundle."""
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        base_path = Path(sys._MEIPASS)
+    else:
+        # Running as script
+        base_path = Path(__file__).parent.parent
+    
+    frontend_path = base_path / "frontend"
+    if frontend_path.exists():
+        return frontend_path
+    return None
+
+FRONTEND_DIR = get_frontend_dir()
+
+if FRONTEND_DIR and FRONTEND_DIR.exists():
+    # Mount static assets
+    app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIR / "assets") if (FRONTEND_DIR / "assets").exists() else str(FRONTEND_DIR)), name="assets")
 
 
 @app.get("/")
 async def root():
     """Serve the main dashboard."""
-    index_path = FRONTEND_DIR / "index.html"
-    if index_path.exists():
-        return FileResponse(str(index_path))
+    if FRONTEND_DIR:
+        index_path = FRONTEND_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
     return {"message": "Line Rangers Bot API", "docs": "/docs"}
+
+
+# Catch-all route for Angular SPA routing
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    """Serve Angular SPA - fallback to index.html for client-side routing."""
+    # Skip API routes
+    if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("ws"):
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    
+    if FRONTEND_DIR:
+        # Check if it's a static file
+        file_path = FRONTEND_DIR / full_path
+        if file_path.exists() and file_path.is_file():
+            return FileResponse(str(file_path))
+        
+        # Otherwise serve index.html for SPA routing
+        index_path = FRONTEND_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+    
+    return JSONResponse({"error": "Not found"}, status_code=404)
 
 
 @app.on_event("startup")

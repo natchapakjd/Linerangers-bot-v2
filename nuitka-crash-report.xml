@@ -1,0 +1,87 @@
+<?xml version='1.0' encoding='utf8'?>
+<nuitka-compilation-report nuitka_version="2.8.9" nuitka_commercial_version="not installed" mode="standalone" completion="error exit message (1)" exit_message="upx: No UPX binary found, please use '--upx-binary' option to specify it.">
+  <performance>
+    <memory_usage name="after_launch" value="54013952" />
+  </performance>
+  <data_composer blob_size="None" />
+  <command_line>
+    <option value="--standalone" />
+    <option value="--windows-console-mode=attach" />
+    <option value="--include-data-dir=frontend=frontend" />
+    <option value="--include-data-dir=app=app" />
+    <option value="--include-data-dir=templates=templates" />
+    <option value="--include-data-dir=workflow_templates=workflow_templates" />
+    <option value="--include-package=fastapi" />
+    <option value="--include-package=starlette" />
+    <option value="--include-package=uvicorn" />
+    <option value="--include-package=pydantic" />
+    <option value="--include-package=pydantic_core" />
+    <option value="--include-package=sqlalchemy" />
+    <option value="--include-package=aiosqlite" />
+    <option value="--include-package=cv2" />
+    <option value="--include-package=PIL" />
+    <option value="--include-package=numpy" />
+    <option value="--include-package=pytesseract" />
+    <option value="--include-package=loguru" />
+    <option value="--include-package=websockets" />
+    <option value="--include-package=python_multipart" />
+    <option value="--include-package=jose" />
+    <option value="--include-package=passlib" />
+    <option value="--include-package=bcrypt" />
+    <option value="--include-package=cryptography" />
+    <option value="--include-package=slowapi" />
+    <option value="--include-package=limits" />
+    <option value="--include-package=pyngrok" />
+    <option value="--include-package=qrcode" />
+    <option value="--include-package=dotenv" />
+    <option value="--include-package=h11" />
+    <option value="--include-package=httptools" />
+    <option value="--include-package=multipart" />
+    <option value="--enable-plugin=anti-bloat" />
+    <option value="--enable-plugin=upx" />
+    <option value="--lto=yes" />
+    <option value="--jobs=4" />
+    <option value="--output-dir=dist" />
+    <option value="--output-filename=LRG-Bot.exe" />
+    <option value="--show-progress" />
+    <option value="--show-memory" />
+    <option value="launcher.py" />
+  </command_line>
+  <plugins>
+    <plugin name="anti-bloat" user_enabled="no" />
+    <plugin name="data-files" user_enabled="no" />
+    <plugin name="delvewheel" user_enabled="no" />
+    <plugin name="dll-files" user_enabled="no" />
+    <plugin name="eventlet" user_enabled="no" />
+    <plugin name="gevent" user_enabled="no" />
+    <plugin name="gi" user_enabled="no" />
+    <plugin name="glfw" user_enabled="no" />
+    <plugin name="implicit-imports" user_enabled="no" />
+    <plugin name="kivy" user_enabled="no" />
+    <plugin name="matplotlib" user_enabled="no" />
+    <plugin name="multiprocessing" user_enabled="no" />
+    <plugin name="options-nanny" user_enabled="no" />
+    <plugin name="pbr-compat" user_enabled="no" />
+    <plugin name="pkg-resources" user_enabled="no" />
+    <plugin name="playwright" user_enabled="no" />
+    <plugin name="pywebview" user_enabled="no" />
+    <plugin name="spacy" user_enabled="no" />
+    <plugin name="transformers" user_enabled="no" />
+    <plugin name="upx" user_enabled="yes" />
+  </plugins>
+  <distributions />
+  <python python_exe="${sys.prefix}\python.exe" python_flavor="CPython Official" python_version="3.10.7" os_name="Windows" os_release="11" arch_name="x86_64" filesystem_encoding="utf-8">
+    <search_path>
+      <path value="${cwd}" />
+      <path value="${sys.prefix}\DLLs" />
+      <path value="${sys.prefix}\lib" />
+      <path value="${sys.prefix}" />
+      <path value="~\AppData\Roaming\Python\Python310\site-packages" />
+      <path value="~\AppData\Roaming\Python\Python310\site-packages\win32" />
+      <path value="~\AppData\Roaming\Python\Python310\site-packages\win32\lib" />
+      <path value="~\AppData\Roaming\Python\Python310\site-packages\Pythonwin" />
+      <path value="${sys.prefix}\lib\site-packages" />
+    </search_path>
+  </python>
+  <output run_filename="failed too early" />
+</nuitka-compilation-report>
