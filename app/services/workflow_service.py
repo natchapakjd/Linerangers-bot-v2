@@ -72,7 +72,7 @@ class WorkflowService:
                 .where(Workflow.month_year == month_year)
                 .order_by(Workflow.is_master.desc())  # Prefer master workflows
             )
-            workflow = result.scalar_one_or_none()
+            workflow = result.scalars().first()  # Use first() to handle multiple matches
             
             if workflow:
                 return workflow.to_dict()
@@ -83,7 +83,7 @@ class WorkflowService:
                 .where(Workflow.mode_name == mode_name)
                 .order_by(Workflow.is_master.desc(), Workflow.updated_at.desc())
             )
-            workflow = result.scalar_one_or_none()
+            workflow = result.scalars().first()  # Use first() to handle multiple matches
             
             return workflow.to_dict() if workflow else None
     
@@ -257,7 +257,11 @@ class WorkflowService:
             loop_group_name=data.get("loop_group_name"),
             stop_template_path=data.get("stop_template_path"),
             stop_on_not_found=data.get("stop_on_not_found", True),
-            loop_max_iterations=data.get("loop_max_iterations", 100)
+            loop_max_iterations=data.get("loop_max_iterations", 100),
+            # Gacha check options
+            ocr_region=data.get("ocr_region"),
+            target_characters=data.get("target_characters"),
+            gacha_save_folder=data.get("gacha_save_folder")
         )
     
     # ==================== Workflow Execution ====================
@@ -652,7 +656,69 @@ class WorkflowService:
                                 elif group_step_type == "press_back":
                                     adb.press_key("KEYCODE_BACK")
                                     await asyncio.sleep(0.5)
+                                
+                                elif group_step_type == "gacha_check":
+                                    # OCR check for gacha character
+                                    from app.services.ocr_service import get_ocr_service
+                                    from datetime import datetime
                                     
+                                    ocr_service = get_ocr_service()
+                                    ocr_region = group_step.get("ocr_region", {})
+                                    target_chars = group_step.get("target_characters", [])
+                                    save_folder = group_step.get("gacha_save_folder", "")
+                                    
+                                    if ocr_region and target_chars:
+                                        screenshot = adb.screenshot()
+                                        if screenshot is not None:
+                                            # Extract text from region
+                                            text = ocr_service.extract_text(
+                                                screenshot,
+                                                region=(
+                                                    ocr_region.get("x", 320),
+                                                    ocr_region.get("y", 140),
+                                                    ocr_region.get("width", 320),
+                                                    ocr_region.get("height", 60)
+                                                )
+                                            )
+                                            print(f"[DEBUG] OCR extracted: '{text}'")
+                                            
+                                            # Check if matches any target
+                                            matched = ocr_service.fuzzy_match(text, target_chars, threshold=0.6)
+                                            if matched:
+                                                print(f"[DEBUG] ✅ GACHA MATCH! Character: {matched}")
+                                                
+                                                # Export XML
+                                                if save_folder:
+                                                    timestamp = datetime.now().strftime("%Y%m%d")
+                                                    # Clean character name for filename
+                                                    clean_name = matched.replace(" ", "_").replace("/", "_")
+                                                    filename = f"{clean_name}_{timestamp}_LINE_COCOS_PREF_KEY.xml"
+                                                    
+                                                    from app.services.daily_login_service import LINERANGERS_PREF_PATH
+                                                    temp_path = "/sdcard/_temp_gacha_export.xml"
+                                                    
+                                                    # Copy and pull file
+                                                    adb.shell_su(f"cp {LINERANGERS_PREF_PATH} {temp_path}")
+                                                    adb.shell_su(f"chmod 644 {temp_path}")
+                                                    
+                                                    output_path = Path(save_folder) / filename
+                                                    if adb.pull_file(temp_path, str(output_path)):
+                                                        print(f"[DEBUG] ✅ Exported: {output_path}")
+                                                    else:
+                                                        print(f"[DEBUG] ❌ Failed to export XML")
+                                                    
+                                                    adb.shell(f"rm {temp_path}")
+                                                
+                                                # Set flag to stop the repeat_group loop
+                                                # We use a special return mechanism
+                                                raise StopIteration("GACHA_MATCH")
+                                    
+                            except StopIteration as e:
+                                if str(e) == "GACHA_MATCH":
+                                    print(f"[DEBUG] ✅ Gacha check matched, stopping repeat_group loop")
+                                    iteration = loop_max_iterations  # Force exit outer loop
+                                    break
+                                raise
                             except Exception as e:
                                 print(f"[DEBUG] Error in group step: {e}")
                                 # Continue with next step in group
@@ -661,6 +727,65 @@ class WorkflowService:
                         print(f"[DEBUG] ⚠️ Reached max iterations ({loop_max_iterations})")
                     
                     print(f"[DEBUG] repeat_group completed after {iteration} iterations")
+                
+                elif step_type == "gacha_check":
+                    # Standalone gacha_check step (not in repeat_group)
+                    from app.services.ocr_service import get_ocr_service
+                    from datetime import datetime
+                    
+                    ocr_service = get_ocr_service()
+                    ocr_region = step.get("ocr_region", {})
+                    target_chars = step.get("target_characters", [])
+                    save_folder = step.get("gacha_save_folder", "")
+                    
+                    if not ocr_region:
+                        return {"success": False, "message": f"gacha_check step {step_index + 1} missing ocr_region"}
+                    
+                    screenshot = adb.screenshot()
+                    if screenshot is None:
+                        return {"success": False, "message": f"Failed to capture screen at step {step_index + 1}"}
+                    
+                    # Extract text from region
+                    text = ocr_service.extract_text(
+                        screenshot,
+                        region=(
+                            ocr_region.get("x", 320),
+                            ocr_region.get("y", 140),
+                            ocr_region.get("width", 320),
+                            ocr_region.get("height", 60)
+                        )
+                    )
+                    print(f"[DEBUG] OCR extracted: '{text}'")
+                    
+                    # Check if matches any target
+                    if target_chars:
+                        matched = ocr_service.fuzzy_match(text, target_chars, threshold=0.6)
+                        if matched:
+                            print(f"[DEBUG] ✅ GACHA MATCH! Character: {matched}")
+                            
+                            # Export XML
+                            if save_folder:
+                                timestamp = datetime.now().strftime("%Y%m%d")
+                                clean_name = matched.replace(" ", "_").replace("/", "_")
+                                filename = f"{clean_name}_{timestamp}_LINE_COCOS_PREF_KEY.xml"
+                                
+                                from app.services.daily_login_service import LINERANGERS_PREF_PATH
+                                temp_path = "/sdcard/_temp_gacha_export.xml"
+                                
+                                adb.shell_su(f"cp {LINERANGERS_PREF_PATH} {temp_path}")
+                                adb.shell_su(f"chmod 644 {temp_path}")
+                                
+                                output_path = Path(save_folder) / filename
+                                if adb.pull_file(temp_path, str(output_path)):
+                                    print(f"[DEBUG] ✅ Exported: {output_path}")
+                                else:
+                                    print(f"[DEBUG] ❌ Failed to export XML")
+                                
+                                adb.shell(f"rm {temp_path}")
+                            
+                            return {"success": True, "message": f"Gacha match found: {matched}"}
+                        else:
+                            print(f"[DEBUG] No match for '{text}' in targets: {target_chars}")
                 
                 step_index += 1
                 

@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 interface WorkflowStep {
   id?: number;
   order_index: number;
-  step_type: 'click' | 'swipe' | 'wait' | 'wait_for_color' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game' | 'repeat_group';
+  step_type: 'click' | 'swipe' | 'wait' | 'wait_for_color' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game' | 'repeat_group' | 'gacha_check';
   x?: number;
   y?: number;
   end_x?: number;
@@ -42,6 +42,12 @@ interface WorkflowStep {
   stop_template_path?: string;
   stop_on_not_found?: boolean;
   loop_max_iterations?: number;
+  
+  // Gacha check properties
+  ocr_region?: { x: number; y: number; width: number; height: number };
+  target_characters?: string[];
+  gacha_save_folder?: string;
+  target_characters_text?: string;  // For UI text input
 }
 
 interface Workflow {
@@ -274,6 +280,7 @@ interface DeviceInfo {
                 <option value="find_all_click">Find All & Click</option>
                 <option value="loop_click">Loop Click</option>
                 <option value="repeat_group">Repeat Group</option>
+                <option value="gacha_check">Gacha Check (OCR)</option>
               </select>
             </div>
 
@@ -389,6 +396,29 @@ interface DeviceInfo {
                 <input type="checkbox" [(ngModel)]="editingStep.stop_on_not_found">
                 <span>Stop when template NOT found (e.g., button disappears)</span>
               </label>
+            }
+            
+            @if (editingStep.step_type === 'gacha_check') {
+              <div class="input-group full-width">
+                <label>OCR REGION (x, y, width, height)</label>
+                <div class="input-group-row">
+                  <div class="input-group"><label>X</label><input type="number" class="glass-input" [ngModel]="editingStep.ocr_region?.x || 320" (ngModelChange)="updateOcrRegion('x', $event)" /></div>
+                  <div class="input-group"><label>Y</label><input type="number" class="glass-input" [ngModel]="editingStep.ocr_region?.y || 140" (ngModelChange)="updateOcrRegion('y', $event)" /></div>
+                  <div class="input-group"><label>W</label><input type="number" class="glass-input" [ngModel]="editingStep.ocr_region?.width || 320" (ngModelChange)="updateOcrRegion('width', $event)" /></div>
+                  <div class="input-group"><label>H</label><input type="number" class="glass-input" [ngModel]="editingStep.ocr_region?.height || 60" (ngModelChange)="updateOcrRegion('height', $event)" /></div>
+                </div>
+              </div>
+              <div class="input-group full-width">
+                <label>TARGET CHARACTERS (comma separated)</label>
+                <input type="text" class="glass-input" [(ngModel)]="editingStep.target_characters_text" placeholder="Chess Knight Sally, Brown, Cony" />
+              </div>
+              <div class="input-group full-width">
+                <label>SAVE FOLDER</label>
+                <div class="flex-row">
+                  <input type="text" class="glass-input" [(ngModel)]="editingStep.gacha_save_folder" placeholder="C:\\gacha_accounts" />
+                  <button class="glass-button small" (click)="browseGachaFolder()">📂</button>
+                </div>
+              </div>
             }
 
              <div class="input-group">
@@ -1007,6 +1037,13 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   async saveWorkflow(): Promise<void> {
     // Auto-apply any pending step edits before saving
     if (this.selectedStepIndex >= 0 && this.editingStep) {
+      // Convert target_characters_text to array if present
+      if (this.editingStep.target_characters_text) {
+        this.editingStep.target_characters = this.editingStep.target_characters_text
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+      }
       this.currentWorkflow.steps[this.selectedStepIndex] = { ...this.editingStep };
       this.addLog(`💾 Auto-applied pending changes to step ${this.selectedStepIndex + 1}`);
     }
@@ -1807,10 +1844,40 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
         this.editingStep.expected_color = [255, 255, 255]; // Default white
       }
     }
+    
+    // Parse ocr_region if it's a string
+    if (this.editingStep.ocr_region && typeof this.editingStep.ocr_region === 'string') {
+      try {
+        this.editingStep.ocr_region = JSON.parse(this.editingStep.ocr_region as any);
+      } catch (e) {
+        this.editingStep.ocr_region = { x: 320, y: 140, width: 320, height: 60 };
+      }
+    }
+    
+    // Convert target_characters array to text for editing
+    if (this.editingStep.target_characters && Array.isArray(this.editingStep.target_characters)) {
+      this.editingStep.target_characters_text = this.editingStep.target_characters.join(', ');
+    } else if (typeof this.editingStep.target_characters === 'string') {
+      // Already a string (from JSON)
+      try {
+        const parsed = JSON.parse(this.editingStep.target_characters as any);
+        this.editingStep.target_characters_text = Array.isArray(parsed) ? parsed.join(', ') : '';
+      } catch (e) {
+        this.editingStep.target_characters_text = '';
+      }
+    }
   }
 
   applyStepEdit(): void {
     if (this.selectedStepIndex >= 0 && this.editingStep) {
+      // Convert target_characters_text to array before saving
+      if (this.editingStep.target_characters_text) {
+        this.editingStep.target_characters = this.editingStep.target_characters_text
+          .split(',')
+          .map(s => s.trim())
+          .filter(s => s.length > 0);
+      }
+      
       this.currentWorkflow.steps[this.selectedStepIndex] = { ...this.editingStep };
       this.editingStep = null;
       this.addLog(`✏️ Updated step ${this.selectedStepIndex + 1}`);
@@ -1922,8 +1989,34 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
         return `Match: ${step.template_name || step.template_path || 'No template'}`;
       case 'repeat_group':
         return `Loop group "${step.loop_group_name || '?'}" until ${step.stop_on_not_found ? 'template NOT found' : 'template found'}`;
+      case 'gacha_check':
+        const targets = step.target_characters?.join(', ') || step.target_characters_text || 'Not set';
+        return `OCR check for: ${targets}`;
       default:
         return step.step_type;
+    }
+  }
+
+  updateOcrRegion(key: 'x' | 'y' | 'width' | 'height', value: number): void {
+    if (!this.editingStep) return;
+    if (!this.editingStep.ocr_region) {
+      this.editingStep.ocr_region = { x: 320, y: 140, width: 320, height: 60 };
+    }
+    this.editingStep.ocr_region[key] = value;
+  }
+
+  async browseGachaFolder(): Promise<void> {
+    try {
+      const response = await fetch('http://localhost:8000/api/v1/browse-folder', {
+        method: 'GET'
+      });
+      const data = await response.json();
+      console.log('Browse folder response:', data);
+      if (data.folder_path && this.editingStep) {
+        this.editingStep.gacha_save_folder = data.folder_path;
+      }
+    } catch (e) {
+      console.error('Browse folder error:', e);
     }
   }
 

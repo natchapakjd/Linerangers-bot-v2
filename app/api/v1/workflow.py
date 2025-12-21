@@ -48,6 +48,17 @@ class StepModel(BaseModel):
     expected_color: Optional[List[int]] = None  # [B, G, R]
     tolerance: Optional[int] = 30
     check_interval: Optional[float] = 1.0
+    
+    # Repeat group options
+    loop_group_name: Optional[str] = None
+    stop_template_path: Optional[str] = None
+    stop_on_not_found: Optional[bool] = True
+    loop_max_iterations: Optional[int] = 100
+    
+    # Gacha check options
+    ocr_region: Optional[dict] = None  # {"x": 320, "y": 140, "width": 320, "height": 60}
+    target_characters: Optional[List[str]] = None  # ["Chess Knight Sally", "Brown"]
+    gacha_save_folder: Optional[str] = None
 
 
 class WorkflowCreateRequest(BaseModel):

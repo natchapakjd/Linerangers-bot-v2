@@ -120,6 +120,11 @@ class WorkflowStep(Base):
     stop_on_not_found = Column(Boolean, default=True)  # True = stop when template NOT found
     loop_max_iterations = Column(Integer, default=100)  # Max iterations safety limit
     
+    # Gacha check options (OCR to check character name)
+    ocr_region = Column(JSON, nullable=True)  # {"x": 320, "y": 140, "width": 320, "height": 60}
+    target_characters = Column(JSON, nullable=True)  # ["Chess Knight Sally", "Brown"]
+    gacha_save_folder = Column(String(500), nullable=True)  # Folder to save matched accounts
+    
     # Relationship
     workflow = relationship("Workflow", back_populates="steps")
     
@@ -162,7 +167,11 @@ class WorkflowStep(Base):
             "loop_group_name": self.loop_group_name,
             "stop_template_path": self.stop_template_path,
             "stop_on_not_found": self.stop_on_not_found,
-            "loop_max_iterations": self.loop_max_iterations
+            "loop_max_iterations": self.loop_max_iterations,
+            # Gacha check options
+            "ocr_region": self.ocr_region,
+            "target_characters": self.target_characters,
+            "gacha_save_folder": self.gacha_save_folder
         }
 
 
