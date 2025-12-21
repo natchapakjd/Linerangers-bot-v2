@@ -252,7 +252,12 @@ class WorkflowService:
             # Wait for color options
             expected_color=data.get("expected_color"),
             tolerance=data.get("tolerance", 30),
-            check_interval=data.get("check_interval", 1.0)
+            check_interval=data.get("check_interval", 1.0),
+            # Repeat group options
+            loop_group_name=data.get("loop_group_name"),
+            stop_template_path=data.get("stop_template_path"),
+            stop_on_not_found=data.get("stop_on_not_found", True),
+            loop_max_iterations=data.get("loop_max_iterations", 100)
         )
     
     # ==================== Workflow Execution ====================
@@ -546,6 +551,116 @@ class WorkflowService:
                     await asyncio.sleep(1)
                     adb.start_app(package_name)
                     await asyncio.sleep(3)  # Wait for game to load
+                
+                elif step_type == "repeat_group":
+                    # Repeat a group of steps until stop condition is met
+                    loop_group_name = step.get("loop_group_name")
+                    stop_template_path = step.get("stop_template_path")
+                    stop_on_not_found = step.get("stop_on_not_found", True)
+                    loop_max_iterations = step.get("loop_max_iterations", 100)
+                    threshold = step.get("threshold", 0.8)
+                    
+                    if not loop_group_name:
+                        return {"success": False, "message": f"repeat_group step {step_index + 1} missing loop_group_name"}
+                    
+                    # Collect steps that belong to the group
+                    group_steps = [s for s in steps if s.get("group_name") == loop_group_name]
+                    
+                    if not group_steps:
+                        print(f"[DEBUG] Warning: No steps found with group_name '{loop_group_name}'")
+                        step_index += 1
+                        continue
+                    
+                    print(f"[DEBUG] repeat_group: Looping {len(group_steps)} steps in group '{loop_group_name}'")
+                    print(f"[DEBUG] Stop condition: template '{Path(stop_template_path).name if stop_template_path else 'None'}' {'NOT found' if stop_on_not_found else 'FOUND'}")
+                    
+                    iteration = 0
+                    while iteration < loop_max_iterations:
+                        iteration += 1
+                        print(f"[DEBUG] === Loop iteration #{iteration}/{loop_max_iterations} ===")
+                        
+                        # Check stop condition BEFORE running group
+                        if stop_template_path:
+                            screenshot = adb.screenshot()
+                            if screenshot is not None:
+                                result = template_service.find_template_fast(
+                                    screenshot,
+                                    stop_template_path,
+                                    threshold
+                                )
+                                template_found = result is not None
+                                
+                                should_stop = (stop_on_not_found and not template_found) or (not stop_on_not_found and template_found)
+                                
+                                if should_stop:
+                                    if stop_on_not_found:
+                                        print(f"[DEBUG] ✅ Stop condition met: template NOT found, exiting loop")
+                                    else:
+                                        print(f"[DEBUG] ✅ Stop condition met: template FOUND, exiting loop")
+                                    break
+                                else:
+                                    if stop_on_not_found:
+                                        print(f"[DEBUG] Template still found, continuing loop...")
+                                    else:
+                                        print(f"[DEBUG] Template not found yet, continuing loop...")
+                        
+                        # Execute all steps in the group
+                        for group_step in group_steps:
+                            group_step_type = group_step["step_type"]
+                            
+                            try:
+                                if group_step_type == "click":
+                                    adb.tap(group_step["x"], group_step["y"])
+                                    await asyncio.sleep(0.3)
+                                
+                                elif group_step_type == "swipe":
+                                    adb.swipe(
+                                        group_step["x"], group_step["y"],
+                                        group_step["end_x"], group_step["end_y"],
+                                        group_step.get("swipe_duration_ms", 300)
+                                    )
+                                    await asyncio.sleep(0.5)
+                                
+                                elif group_step_type == "wait":
+                                    await asyncio.sleep(group_step.get("wait_duration_ms", 1000) / 1000)
+                                
+                                elif group_step_type == "image_match":
+                                    # Simple image match with click
+                                    import time
+                                    max_wait = group_step.get("max_wait_seconds", 5)
+                                    start_time = time.time()
+                                    
+                                    while (time.time() - start_time) < max_wait:
+                                        screenshot = adb.screenshot()
+                                        if screenshot is None:
+                                            await asyncio.sleep(0.5)
+                                            continue
+                                        
+                                        result = template_service.find_template_fast(
+                                            screenshot,
+                                            group_step["template_path"],
+                                            group_step.get("threshold", 0.8)
+                                        )
+                                        
+                                        if result:
+                                            adb.tap(result[0], result[1])
+                                            await asyncio.sleep(0.3)
+                                            break
+                                        
+                                        await asyncio.sleep(0.5)
+                                
+                                elif group_step_type == "press_back":
+                                    adb.press_key("KEYCODE_BACK")
+                                    await asyncio.sleep(0.5)
+                                    
+                            except Exception as e:
+                                print(f"[DEBUG] Error in group step: {e}")
+                                # Continue with next step in group
+                    
+                    if iteration >= loop_max_iterations:
+                        print(f"[DEBUG] ⚠️ Reached max iterations ({loop_max_iterations})")
+                    
+                    print(f"[DEBUG] repeat_group completed after {iteration} iterations")
                 
                 step_index += 1
                 

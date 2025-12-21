@@ -7,7 +7,7 @@ import Swal from 'sweetalert2';
 interface WorkflowStep {
   id?: number;
   order_index: number;
-  step_type: 'click' | 'swipe' | 'wait' | 'wait_for_color' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game';
+  step_type: 'click' | 'swipe' | 'wait' | 'wait_for_color' | 'image_match' | 'find_all_click' | 'loop_click' | 'conditional' | 'press_back' | 'restart_game' | 'start_game' | 'repeat_group';
   x?: number;
   y?: number;
   end_x?: number;
@@ -36,6 +36,12 @@ interface WorkflowStep {
   expected_color?: number[];  // [B, G, R]
   tolerance?: number;
   check_interval?: number;
+  
+  // Repeat group properties
+  loop_group_name?: string;
+  stop_template_path?: string;
+  stop_on_not_found?: boolean;
+  loop_max_iterations?: number;
 }
 
 interface Workflow {
@@ -204,6 +210,7 @@ interface DeviceInfo {
               <button class="glass-button x-small" (click)="addStep('wait_for_color')">🎨 COLOR</button>
               <button class="glass-button x-small" (click)="addStep('image_match')">+ IMAGE</button>
               <button class="glass-button x-small" (click)="addStep('loop_click')">🔁 LOOP</button>
+              <button class="glass-button x-small" (click)="addStep('repeat_group')">🔄 REPEAT GRP</button>
               <button class="glass-button x-small" (click)="addStep('press_back')">⬅️ BACK</button>
               <button class="glass-button x-small" (click)="addStep('start_game')">▶️ START</button>
               <button class="glass-button x-small" (click)="addStep('restart_game')">🔄 RESTART</button>
@@ -266,6 +273,7 @@ interface DeviceInfo {
                 <option value="image_match">Image Match</option>
                 <option value="find_all_click">Find All & Click</option>
                 <option value="loop_click">Loop Click</option>
+                <option value="repeat_group">Repeat Group</option>
               </select>
             </div>
 
@@ -295,18 +303,18 @@ interface DeviceInfo {
                 <div class="input-group"><label>Y</label><input type="number" class="glass-input" [(ngModel)]="editingStep.y" /></div>
               </div>
               <div class="input-group">
-                <label>EXPECTED COLOR (RGB)</label>
+                <label>EXPECTED COLOR (R, G, B)</label>
                 <div class="color-inputs">
                   <input type="number" class="glass-input small" 
-                    [ngModel]="editingStep.expected_color?.[2] || 255" 
+                    [ngModel]="getColorValue(2)" 
                     (ngModelChange)="updateColor(2, $event)" 
                     placeholder="R" min="0" max="255" />
                   <input type="number" class="glass-input small" 
-                    [ngModel]="editingStep.expected_color?.[1] || 255" 
+                    [ngModel]="getColorValue(1)" 
                     (ngModelChange)="updateColor(1, $event)" 
                     placeholder="G" min="0" max="255" />
                   <input type="number" class="glass-input small" 
-                    [ngModel]="editingStep.expected_color?.[0] || 255" 
+                    [ngModel]="getColorValue(0)" 
                     (ngModelChange)="updateColor(0, $event)" 
                     placeholder="B" min="0" max="255" />
                 </div>
@@ -352,6 +360,35 @@ interface DeviceInfo {
                   <span>Skip if not found</span>
                 </label>
               }
+            }
+            
+            @if (editingStep.step_type === 'repeat_group') {
+              <div class="input-group">
+                <label>LOOP GROUP NAME</label>
+                <select [(ngModel)]="editingStep.loop_group_name" class="glass-input">
+                  <option [value]="undefined">-- Select Group --</option>
+                  @for (group of availableGroups(); track group) {
+                    <option [value]="group">{{ group }}</option>
+                  }
+                </select>
+              </div>
+              <div class="input-group">
+                <label>STOP TEMPLATE</label>
+                <select [(ngModel)]="editingStep.stop_template_path" class="glass-input">
+                  <option [value]="undefined">-- None --</option>
+                  @for (t of templates(); track t.id) {
+                    <option [value]="t.file_path">{{ t.name }}</option>
+                  }
+                </select>
+              </div>
+              <div class="input-group-row">
+                <div class="input-group"><label>MAX ITERATIONS</label><input type="number" class="glass-input" [(ngModel)]="editingStep.loop_max_iterations" placeholder="100" /></div>
+                <div class="input-group"><label>THRESHOLD</label><input type="number" class="glass-input" [(ngModel)]="editingStep.threshold" step="0.05" placeholder="0.8" /></div>
+              </div>
+              <label class="checkbox-label">
+                <input type="checkbox" [(ngModel)]="editingStep.stop_on_not_found">
+                <span>Stop when template NOT found (e.g., button disappears)</span>
+              </label>
             }
 
              <div class="input-group">
@@ -462,7 +499,15 @@ interface DeviceInfo {
 
     .input-group.flex-2 { flex: 2; }
     .input-group.full-width { grid-column: 1 / -1; }
-    .input-group-row { display: flex; gap: 1rem; }
+    .input-group-row { 
+      display: flex; 
+      gap: 1rem; 
+      flex-wrap: wrap;
+    }
+    
+    .input-group-row > .input-group {
+      min-width: 120px;
+    }
 
     .flex-row { display: flex; gap: 0.5rem; }
 
@@ -765,6 +810,28 @@ interface DeviceInfo {
       margin: 1.5rem 0;
     }
 
+    /* Color inputs for wait_for_color step */
+    .color-inputs {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: nowrap;
+    }
+
+    .color-inputs input {
+      width: 80px;
+      min-width: 80px;
+      flex-shrink: 0;
+      text-align: center;
+    }
+
+    .glass-input.small {
+      width: 80px;
+      min-width: 80px;
+      flex-shrink: 0;
+      padding: 0.5rem;
+      text-align: center;
+    }
+
     @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
     /* --- Log Panel --- */
@@ -917,6 +984,18 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
       const data = await response.json();
       if (data.success) {
         this.currentWorkflow = data.workflow;
+        
+        // Parse expected_color for each step (may be JSON string from DB)
+        this.currentWorkflow.steps.forEach(step => {
+          if (step.expected_color && typeof step.expected_color === 'string') {
+            try {
+              step.expected_color = JSON.parse(step.expected_color);
+            } catch (e) {
+              step.expected_color = [255, 255, 255];
+            }
+          }
+        });
+        
         this.updateAvailableGroups();
         this.addLog(`✅ Loaded: ${data.workflow.name}`);
       }
@@ -1382,6 +1461,13 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
     }
   }
   
+  // Helper to get color value safely
+  getColorValue(index: number): number {
+    if (!this.editingStep?.expected_color) return 255;
+    if (!Array.isArray(this.editingStep.expected_color)) return 255;
+    return this.editingStep.expected_color[index] ?? 255;
+  }
+
   // Helper to update color array values
   updateColor(index: number, value: number): void {
     if (!this.editingStep) return;
@@ -1712,6 +1798,15 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
   editStep(index: number): void {
     this.selectedStepIndex = index;
     this.editingStep = { ...this.currentWorkflow.steps[index] };
+    
+    // Parse expected_color if it's a string (from database JSON)
+    if (this.editingStep.expected_color && typeof this.editingStep.expected_color === 'string') {
+      try {
+        this.editingStep.expected_color = JSON.parse(this.editingStep.expected_color as any);
+      } catch (e) {
+        this.editingStep.expected_color = [255, 255, 255]; // Default white
+      }
+    }
   }
 
   applyStepEdit(): void {
@@ -1825,6 +1920,8 @@ export class WorkflowBuilderComponent implements OnInit, OnDestroy {
         return `Wait ${step.wait_duration_ms}ms`;
       case 'image_match':
         return `Match: ${step.template_name || step.template_path || 'No template'}`;
+      case 'repeat_group':
+        return `Loop group "${step.loop_group_name || '?'}" until ${step.stop_on_not_found ? 'template NOT found' : 'template found'}`;
       default:
         return step.step_type;
     }

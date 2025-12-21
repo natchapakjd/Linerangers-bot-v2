@@ -114,6 +114,12 @@ class WorkflowStep(Base):
     tolerance = Column(Integer, default=30)
     check_interval = Column(Float, default=1.0)
     
+    # Repeat group options (loop a group of steps until condition)
+    loop_group_name = Column(String(100), nullable=True)  # Name of group to loop
+    stop_template_path = Column(String(500), nullable=True)  # Template to check for stop condition
+    stop_on_not_found = Column(Boolean, default=True)  # True = stop when template NOT found
+    loop_max_iterations = Column(Integer, default=100)  # Max iterations safety limit
+    
     # Relationship
     workflow = relationship("Workflow", back_populates="steps")
     
@@ -151,7 +157,12 @@ class WorkflowStep(Base):
             # Wait for color options
             "expected_color": self.expected_color,
             "tolerance": self.tolerance,
-            "check_interval": self.check_interval
+            "check_interval": self.check_interval,
+            # Repeat group options
+            "loop_group_name": self.loop_group_name,
+            "stop_template_path": self.stop_template_path,
+            "stop_on_not_found": self.stop_on_not_found,
+            "loop_max_iterations": self.loop_max_iterations
         }
 
 
